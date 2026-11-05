@@ -1250,18 +1250,7 @@
     var privBtn = $('#btn-open-privacy', topbar);
     if (privBtn) privBtn.onclick = openNoticeModal;
     var switchBtn = $('#btn-switch-account', topbar);
-    if (switchBtn) switchBtn.onclick = function () {
-      if (!S.nativeShell) { showAccountSwitcher(); return; }
-      if (S.nativeShell) {
-        startNativeImport();
-        return;
-      }
-      if (S.pull) S.pull.stopped = true;
-      if (S.mineBgmAudio) { try { S.mineBgmAudio.pause(); } catch (e) {} }
-      revokeMediaCache();
-      S.token = ''; S.uid = ''; S.phone = ''; S.pull = null; S.archive = null; S.isLocalArchive = false;
-      renderLanding();
-    };
+    if (switchBtn) switchBtn.onclick = showAccountSwitcher;
     var switchZipBtn = $('#btn-switch-zip', topbar);
     if (switchZipBtn) switchZipBtn.onclick = startNativeImport;
     var logoutBtn = $('#btn-logout-account', topbar);
@@ -2484,11 +2473,31 @@
     return false;
   };
 
+  function logoutToLanding() {
+    if (S.pull) S.pull.stopped = true;
+    if (S.mineBgmAudio) { try { S.mineBgmAudio.pause(); } catch (e) {} }
+    revokeMediaCache();
+    S.token = ''; S.uid = ''; S.phone = ''; S.pull = null; S.archive = null; S.isLocalArchive = false;
+    renderLanding();
+  }
+
   function showAccountSwitcher() {
     var mask = el('div', 'modal-mask');
-    mask.innerHTML = '<article class="modal-card account-switch-card"><button class="close-btn" aria-label="关闭">×</button><h2>切换账号</h2><div id="account-switch-list">正在读取账号…</div></article>';
+    mask.innerHTML = '<article class="modal-card account-switch-card">' +
+      '<button class="close-btn" aria-label="关闭">×</button>' +
+      '<h2>切换或管理账号</h2>' +
+      '<div id="account-switch-list">正在读取已存账号…</div>' +
+      '<div class="account-switch-footer" style="margin-top:14px;display:flex;flex-direction:column;gap:8px">' +
+        '<button class="btn btn-primary" id="btn-modal-login-new" type="button" style="width:100%">+ 登录其他新账号 / 返回登录页</button>' +
+        (S.nativeShell ? '<button class="btn btn-soft" id="btn-modal-import-zip" type="button" style="width:100%">导入本地 .zip 备份包</button>' : '') +
+      '</div>' +
+    '</article>';
     mask.onclick = function (event) { if (event.target === mask || event.target.closest('.close-btn')) mask.remove(); };
     document.body.appendChild(mask);
+    var loginNewBtn = $('#btn-modal-login-new', mask);
+    if (loginNewBtn) loginNewBtn.onclick = function () { mask.remove(); logoutToLanding(); };
+    var importZipBtn = $('#btn-modal-import-zip', mask);
+    if (importZipBtn) importZipBtn.onclick = function () { mask.remove(); startNativeImport(); };
     Promise.all([IDB.read('accounts_index_v1').catch(function () { return []; }), Promise.resolve(nativeArchiveList())]).then(function (parts) {
       var map = {};
       array(parts[0]).concat(parts[1]).forEach(function (item) {
@@ -2498,8 +2507,8 @@
       var accounts = Object.keys(map).map(function (key) { return map[key]; });
       var box = $('#account-switch-list', mask);
       box.innerHTML = accounts.length ? accounts.map(function (item) {
-        return '<button class="saved-account" data-switch-account="' + esc(item.key) + '" type="button"><div><b>' + esc(item.nickname || item.key) + '</b><small>树洞 ' + Number(item.treeCount || 0) + '</small></div><span>' + (item.key === S.accountKey ? '当前' : '进入') + '</span></button>';
-      }).join('') : '<p>还没有其他已保存账号</p>';
+        return '<button class="saved-account" data-switch-account="' + esc(item.key) + '" type="button"><div><b>' + esc(item.nickname || item.key) + '</b><small>' + esc(item.phoneMasked || '') + (item.phoneMasked ? ' · ' : '') + '树洞 ' + Number(item.treeCount || 0) + '</small></div><span>' + (item.key === S.accountKey ? '当前' : '进入') + '</span></button>';
+      }).join('') : '<p style="color:#86909c;font-size:13px;margin:8px 0">当前还没有其他已保存账号，可点击下方按钮登录新账号</p>';
       $$('[data-switch-account]', box).forEach(function (btn) {
         btn.onclick = function () {
           var key = btn.getAttribute('data-switch-account');
