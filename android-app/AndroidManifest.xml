@@ -4,7 +4,8 @@
     android:versionCode="1"
     android:versionName="1.0.0">
 
-    <!-- 零联网：不声明 INTERNET，也不声明存储权限。选文件走 ACTION_OPEN_DOCUMENT。 -->
+    <!-- 允许在岁岁停服前直接在线登录拉取数据；停服后也能纯离线读取已存好的本地 archive 数据 -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="34" />
 
     <application

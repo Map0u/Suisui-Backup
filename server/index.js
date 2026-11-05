@@ -880,7 +880,7 @@ function serveApkDownload(res) {
       'Content-Type': 'application/vnd.android.package-archive',
       'Content-Disposition': 'attachment; filename="suisui-memorial.apk"',
       'Content-Length': st.size,
-      'Cache-Control': 'no-cache'
+      'Cache-Control': 'public, max-age=86400'
     }));
     fs.createReadStream(file).pipe(res);
   });
@@ -1087,8 +1087,42 @@ function mediaProxy(req, res, targetUrl, redirectsLeft, lease) {
   });
 }
 
+/* ---------------- 安卓壳 https://suisui.local 跨域直连 ---------------- */
+function appCorsHeaders(req) {
+  var origin = req.headers && req.headers.origin;
+  if (origin !== 'https://suisui.local') return null;
+  return {
+    'Access-Control-Allow-Origin': 'https://suisui.local',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Vary': 'Origin'
+  };
+}
+
+function applyAppCors(req, res) {
+  var cors = appCorsHeaders(req);
+  if (!cors) return false;
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, Object.assign({ 'Content-Length': 0, 'Cache-Control': 'no-store' }, cors));
+    res.end();
+    return true;
+  }
+  var origWriteHead = res.writeHead;
+  res.writeHead = function (code, reason, headers) {
+    if (reason && typeof reason === 'object') {
+      headers = reason;
+      reason = undefined;
+    }
+    headers = Object.assign({}, headers || {}, cors);
+    if (reason) return origWriteHead.call(this, code, reason, headers);
+    return origWriteHead.call(this, code, headers);
+  };
+  return false;
+}
+
 /* ---------------- 路由分发 ---------------- */
 var server = http.createServer(function (req, res) {
+  if (applyAppCors(req, res)) return;
   var parsed = url.parse(req.url, true);
   var p = parsed.pathname;
 

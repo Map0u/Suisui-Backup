@@ -13,4 +13,6 @@ node_modules/
 android-app/build/
 *.keystore
 *.jks
+*.class
 android-app/jvm-test/*.class
+server/check-data.js

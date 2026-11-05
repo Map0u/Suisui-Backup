@@ -145,16 +145,16 @@ if "package: name='com.suisui.memorial'" not in text:
     problems.append("package name")
 if "岁岁纪念馆" not in text and "\\u5c81\\u5c81\\u7eaa\\u5ff5\\u9986" not in text.lower():
     problems.append("app label")
-if "android.permission.INTERNET" in text:
-    problems.append("INTERNET permission declared")
-if "uses-permission:" in text:
-    problems.append("unexpected uses-permission")
+if "android.permission.INTERNET" not in text:
+    problems.append("missing INTERNET permission")
+if "android.permission.WRITE_EXTERNAL_STORAGE" in text or "android.permission.READ_EXTERNAL_STORAGE" in text:
+    problems.append("unexpected external storage permission")
 if "icon=" not in text:
     problems.append("launcher icon")
 if problems:
     sys.stderr.write("badging check failed: " + ", ".join(problems) + "\n")
     sys.exit(1)
-print("BADGING OK package=com.suisui.memorial label=岁岁纪念馆 internet=0")
+print("BADGING OK package=com.suisui.memorial label=岁岁纪念馆 internet=1")
 PY
 
 ls -lh "$OUT_APK"

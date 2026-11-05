@@ -130,7 +130,58 @@
     setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); }, duration || 2600);
   }
 
+  function uint8ArrayToBase64(bytes) {
+    var binary = '';
+    var len = bytes.byteLength;
+    var chunkSize = 0x8000;
+    for (var i = 0; i < len; i += chunkSize) {
+      var end = Math.min(i + chunkSize, len);
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, end));
+    }
+    return btoa(binary);
+  }
+
+  async function sendZipToNative(blob, filename) {
+    if (!window.SuisuiNative) return;
+    var safeName = filename || '岁岁回忆备份.zip';
+    var CHUNK_SIZE = 1024 * 1024; // 1MB 分块传输
+    var total = blob.size;
+    try {
+      if (typeof window.SuisuiNative.beginSaveZip === 'function' &&
+          typeof window.SuisuiNative.appendSaveZipChunk === 'function' &&
+          typeof window.SuisuiNative.finishSaveZip === 'function') {
+        window.SuisuiNative.beginSaveZip(safeName, total);
+        for (var offset = 0; offset < total; offset += CHUNK_SIZE) {
+          var slice = blob.slice(offset, Math.min(offset + CHUNK_SIZE, total));
+          var buf = await slice.arrayBuffer();
+          var b64 = uint8ArrayToBase64(new Uint8Array(buf));
+          window.SuisuiNative.appendSaveZipChunk(b64);
+        }
+        window.SuisuiNative.finishSaveZip();
+      } else if (typeof window.SuisuiNative.saveBase64Zip === 'function') {
+        var reader = new FileReader();
+        reader.onload = function () {
+          var res = reader.result || '';
+          var idx = res.indexOf(',');
+          var b64 = idx >= 0 ? res.substring(idx + 1) : res;
+          window.SuisuiNative.saveBase64Zip(b64, safeName);
+        };
+        reader.readAsDataURL(blob);
+      }
+    } catch (e) {
+      toast('保存到手机时出错，请重试');
+    }
+  }
+
   function safeFetchJson(url, opts) {
+    opts = opts || {};
+    if (isNativeShell() && opts.body && String(opts.method || '').toUpperCase() === 'POST') {
+      opts.headers = opts.headers || {};
+      var rawBody = typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body);
+      try {
+        opts.headers['X-Body-Base64'] = btoa(unescape(encodeURIComponent(rawBody)));
+      } catch (e) {}
+    }
     return fetch(url, opts).then(function (response) {
       return response.text().then(function (text) {
         var data;
@@ -528,18 +579,28 @@
     bindLoginEvents();
     bindFileEntries();
     bindApkLinks(screen);
-    if (!S.nativeShell) loadResumeBanner();
+    loadResumeBanner();
   }
 
   function adaptNativeLanding() {
     var card = $('.login-card');
     if (!card) return;
-    card.innerHTML =
-      '<button id="native-import" class="btn btn-primary btn-block native-import-btn" type="button">导入我的岁岁备份包 (.zip)</button>' +
-      '<p class="native-import-sub">选择手机里保存的岁岁备份包，导入一次即可永久离线翻看</p>' +
-      '<div class="native-import-line"><i id="native-import-bar" style="width:' + Number(S.nativeImportPct || 0) + '%"></i></div>' +
-      '<div id="native-import-status" class="form-msg">' + esc(S.nativeImportMsg || '') + '</div>' +
-      '<input id="zip-input" class="hidden" type="file" accept=".zip,.json">';
+    var apkEntry = $('.apk-entry', card);
+    if (apkEntry) apkEntry.style.display = 'none';
+
+    var submitBtn = $('#login-submit', card);
+    if (submitBtn && !$('#native-import')) {
+      var box = el('div', 'native-import-section');
+      box.style.marginTop = '14px';
+      box.innerHTML =
+        '<button id="native-import" class="btn btn-soft btn-block native-import-btn" type="button" style="display:flex;align-items:center;justify-content:center;gap:8px;font-weight:600;padding:12px 14px;background:#F0F6F7;color:#357C72;border:1px solid #D1E5E7;">' +
+          '<img src="' + A + 'sorrow/letter_can_open.png" alt="" style="width:20px;height:20px;object-fit:contain;">' +
+          '直接打开已保存的岁岁备份包 (.zip)' +
+        '</button>' +
+        '<div class="native-import-line" style="margin-top:8px;"><i id="native-import-bar" style="width:' + Number(S.nativeImportPct || 0) + '%"></i></div>' +
+        '<div id="native-import-status" class="form-msg" style="text-align:center;margin-top:4px;">' + esc(S.nativeImportMsg || '') + '</div>';
+      submitBtn.parentNode.insertBefore(box, submitBtn.nextSibling);
+    }
   }
 
   function loadResumeBanner() {
@@ -647,7 +708,16 @@
 
   function bindFileEntries() {
     var openZip = $('#open-zip');
-    if (openZip) openZip.onclick = function () { var input = $('#zip-input'); if (input) input.click(); };
+    if (openZip) {
+      openZip.onclick = function () {
+        if (isNativeShell()) {
+          startNativeImport();
+        } else {
+          var input = $('#zip-input');
+          if (input) input.click();
+        }
+      };
+    }
     var zipInput = $('#zip-input');
     if (zipInput) zipInput.onchange = function (e) { openArchiveFile(e.target.files && e.target.files[0]); };
     var nativeBtn = $('#native-import');
@@ -780,6 +850,7 @@
   }
 
   function startPull(saved) {
+    S.isLocalArchive = false;
     var cp = newCheckpoint(saved);
     S.archive = cp.archive;
     S.activeTab = 'tree';
@@ -906,16 +977,16 @@
     if (!topbar) return;
     var d = archiveShape(S.archive || emptyArchive());
     var c = counts(d);
-    var nativeOffline = Boolean(window.SuisuiNative) && !!S.archive;
+    var isPureOffline = Boolean(S.isLocalArchive && !S.pull && !S.token);
     var pull = S.pull;
     var pct = pullPercent();
     var activeMod = pull && pull.active ? PULL_MODULES.filter(function (m) { return m.key === pull.active; })[0] : null;
 
     var titleText = '';
     var subText = '';
-    if (nativeOffline) {
-      titleText = (d.profile.nickname || '岁友') + ' 的岁岁时光纪念馆 · 已保存在手机本地';
-      subText = '离线浏览中 · 数据仅保存在手机本地';
+    if (isPureOffline) {
+      titleText = (d.profile.nickname || '岁友') + ' 的岁岁时光纪念馆 · 本地离线';
+      subText = '离线浏览中 · 数据保存在手机本地';
     } else if (S.exporting) {
       titleText = S.exportProgressTitle || '正在整理文字、照片与语音…';
       subText = S.exportProgressSub || '请稍候，马上就好';
@@ -948,25 +1019,45 @@
           '<div>' +
             '<button id="btn-export-txt-only" type="button">只保存文字手账</button>' +
             '<button id="btn-open-privacy" type="button">珍藏说明</button>' +
-            (nativeOffline ? '' : '<button id="btn-switch-account" type="button">' + (S.nativeShell ? '切换备份包' : '切换账号') + '</button>') +
+            (S.nativeShell
+              ? '<button id="btn-switch-zip" type="button">切换本地备份包</button>' +
+                '<button id="btn-logout-account" type="button">切换账号</button>'
+              : '<button id="btn-switch-account" type="button">切换账号</button>') +
           '</div>' +
-          (nativeOffline ? '' : '<div class="drawer-apk-row">' + apkLinkHTML() + '</div>') +
+          (S.nativeShell ? '' : '<div class="drawer-apk-row">' + apkLinkHTML() + '</div>') +
         '</div>' +
       '</div>';
     }
 
     var saveBarHTML = '';
-    if (S.lastZipBlobUrl && !S.exporting && !nativeOffline) {
+    if (S.lastZipBlobUrl && !S.exporting && !isPureOffline) {
       var sizeMB = S.lastZipBlob ? (S.lastZipBlob.size / 1048576).toFixed(2) + ' MB' : '';
       saveBarHTML = '<div class="ready-save-bar">' +
         '<span>回忆备份包已就绪' + (sizeMB ? ' (' + sizeMB + ')' : '') + '，可保存到手机/电脑（建议顺手存一份到微信文件传输助手防丢）：</span>' +
         '<div class="ready-save-actions">' +
           '<a class="btn btn-teal" href="' + esc(S.lastZipBlobUrl) + '" download="' + esc(S.lastZipFilename || '岁岁备份.zip') + '">保存到手机/电脑</a>' +
           (navigator.canShare ? '<button class="btn btn-soft" id="btn-ios-share" type="button">存储到文件</button>' : '') +
-          apkLinkHTML() +
+          (S.nativeShell ? '' : apkLinkHTML()) +
         '</div>' +
       '</div>';
     }
+
+    var rightBtnsHTML = '';
+    if (pull && !pull.cp.complete) {
+      if (pull.paused) {
+        rightBtnsHTML += '<button class="btn btn-teal" id="btn-resume-pull" type="button">继续同步</button>';
+      } else {
+        rightBtnsHTML += '<button class="btn btn-soft" id="btn-pause-pull" type="button">暂停</button>';
+      }
+    }
+    if (S.nativeShell) {
+      rightBtnsHTML += '<button class="btn btn-soft" id="btn-switch-account" type="button">切换本地备份包</button>';
+    } else if (isPureOffline) {
+      rightBtnsHTML += '<button class="btn btn-soft" id="btn-switch-account" type="button">切换备份包</button>';
+    }
+    rightBtnsHTML += '<button class="btn btn-primary" id="btn-export-all" type="button"' + (S.exporting || syncStillGoing() ? ' disabled' : '') + '>' +
+      (S.exporting ? '正在整理…' : (syncStillGoing() ? '正在整理回忆中，请稍候…' : '保存全部岁岁回忆')) +
+    '</button>';
 
     topbar.innerHTML = '<div class="backup-topbar-inner">' +
       '<div class="backup-row-main">' +
@@ -976,22 +1067,12 @@
             '<div class="backup-status-title">' + esc(titleText) + '</div>' +
             '<div class="backup-status-sub">' +
               '<span>' + esc(subText) + '</span>' +
-              (nativeOffline ? '' : '<button class="backup-detail-toggle" id="toggle-backup-drawer" type="button">' + (S.drawerOpen ? '收起明细' : '备份明细') + '</button>') +
+              '<button class="backup-detail-toggle" id="toggle-backup-drawer" type="button">' + (S.drawerOpen ? '收起明细' : '备份明细') + '</button>' +
             '</div>' +
           '</div>' +
         '</div>' +
         '<div class="backup-actions-right">' +
-          (nativeOffline
-            ? '<button class="btn btn-soft" id="toggle-backup-drawer" type="button">' + (S.drawerOpen ? '收起明细' : '备份明细') + '</button>' +
-              '<button class="btn btn-soft" id="btn-switch-account" type="button">切换备份包</button>'
-            : (pull && !pull.cp.complete ? (
-              pull.paused
-                ? '<button class="btn btn-teal" id="btn-resume-pull" type="button">继续同步</button>'
-                : '<button class="btn btn-soft" id="btn-pause-pull" type="button">暂停</button>'
-            ) : '') +
-            '<button class="btn btn-primary" id="btn-export-all" type="button"' + (S.exporting || syncStillGoing() ? ' disabled' : '') + '>' +
-              (S.exporting ? '正在整理…' : (syncStillGoing() ? '正在整理回忆中，请稍候…' : '保存全部岁岁回忆')) +
-            '</button>') +
+          rightBtnsHTML +
         '</div>' +
       '</div>' +
       ((pull && !pull.cp.complete) || S.exporting ? '<div class="backup-progress-line"><i style="width:' + (S.exporting ? (S.exportPct || 15) : pct) + '%"></i></div>' : '') +
@@ -1016,14 +1097,24 @@
     if (privBtn) privBtn.onclick = openNoticeModal;
     var switchBtn = $('#btn-switch-account', topbar);
     if (switchBtn) switchBtn.onclick = function () {
-      if (S.nativeShell && window.SuisuiNative && typeof window.SuisuiNative.pickZip === 'function') {
+      if (S.nativeShell) {
         startNativeImport();
         return;
       }
       if (S.pull) S.pull.stopped = true;
       if (S.mineBgmAudio) { try { S.mineBgmAudio.pause(); } catch (e) {} }
       revokeMediaCache();
-      S.token = ''; S.uid = ''; S.phone = ''; S.pull = null; S.archive = null;
+      S.token = ''; S.uid = ''; S.phone = ''; S.pull = null; S.archive = null; S.isLocalArchive = false;
+      renderLanding();
+    };
+    var switchZipBtn = $('#btn-switch-zip', topbar);
+    if (switchZipBtn) switchZipBtn.onclick = startNativeImport;
+    var logoutBtn = $('#btn-logout-account', topbar);
+    if (logoutBtn) logoutBtn.onclick = function () {
+      if (S.pull) S.pull.stopped = true;
+      if (S.mineBgmAudio) { try { S.mineBgmAudio.pause(); } catch (e) {} }
+      revokeMediaCache();
+      S.token = ''; S.uid = ''; S.phone = ''; S.pull = null; S.archive = null; S.isLocalArchive = false;
       renderLanding();
     };
     bindApkLinks(topbar);
@@ -2045,10 +2136,15 @@
       refreshTopBackupBar();
 
       triggerDownload(S.lastZipBlobUrl, filename);
+      if (isNativeShell()) {
+        sendZipToNative(blob, filename);
+      }
       var savedCount = refs.length - failedUrls.length;
-      toast(failedUrls.length
-        ? ('已收录 ' + savedCount + ' 份照片与语音（有 ' + failedUrls.length + ' 份原文件在岁岁端已失效） · 请将 .zip 存到电脑硬盘/网盘，别只留手机里')
-        : ('岁岁回忆备份包已生成（共收录 ' + savedCount + ' 份照片与语音） · 请将 .zip 存到电脑硬盘/网盘，别只留手机里'));
+      toast(isNativeShell()
+        ? ('岁岁回忆备份包已生成并已存入 App 本地，正在唤起系统保存窗口…')
+        : (failedUrls.length
+          ? ('已收录 ' + savedCount + ' 份照片与语音（有 ' + failedUrls.length + ' 份原文件在岁岁端已失效） · 请将 .zip 存到电脑硬盘/网盘，别只留手机里')
+          : ('岁岁回忆备份包已生成（共收录 ' + savedCount + ' 份照片与语音） · 请将 .zip 存到电脑硬盘/网盘，别只留手机里')));
     } catch (err) {
       S.exporting = false;
       refreshTopBackupBar();
@@ -2061,6 +2157,7 @@
   function openNativeArchive(data) {
     revokeMediaCache();
     S.nativeShell = true;
+    S.isLocalArchive = true;
     S.archive = archiveShape(data);
     S.zipReader = null;
     S.pull = null;
