@@ -1,0 +1,1683 @@
+{
+  "source": "岁岁_5.6_APKPure.apk (com.iflytek.time.emotion)",
+  "theme": {
+    "colorPrimary": "#BED7E8",
+    "colorAccent": "#03DAC5",
+    "diary_background_gradient": [
+      "#FFFFFF",
+      "#BED7E8"
+    ],
+    "sorrow_background_gradient": [
+      "#FEFCF7",
+      "#FFFBF6",
+      "#F1DFD2"
+    ],
+    "sorrow_theme_dark": "#1E2132",
+    "share_theme_dark": "#252C35",
+    "home_future": "#8A94BE",
+    "home_now": "#89A9CA",
+    "home_years": "#8BB6C3",
+    "text_primary": "#131415",
+    "text_secondary": "#75787C",
+    "brand_motif": "blue_watercolor_planet_with_rings_and_clock_hands",
+    "note": "主视觉为浅蓝青色系(≈#8EC9D6~#BED7E8)，解忧馆为暖米色(#FEFCF7→#F1DFD2)加深蓝夜(#1E2132)。"
+  },
+  "groups": {
+    "icon": [
+      "app_launcher.png",
+      "app_launcher_round.png",
+      "logo_suisui.png",
+      "logo_suisui_app.png"
+    ],
+    "tab": [
+      "tab_mood.png",
+      "tab_mood_sel.png",
+      "tab_tree.png",
+      "tab_tree_sel.png",
+      "tab_sorrow.png",
+      "tab_sorrow_sel.png",
+      "tab_hudong.png",
+      "tab_hudong_sel.png",
+      "tab_mine.png",
+      "tab_mine_sel.png"
+    ],
+    "feed": [
+      "ic_like.png",
+      "ic_like_sel.png",
+      "ic_comment.png",
+      "ic_favorite.png",
+      "ic_favorite_sel.png",
+      "ic_share.png",
+      "ic_voice_play.png",
+      "ic_sex_male.png",
+      "ic_sex_female.png",
+      "ic_avatar_default.png",
+      "ic_dynamic_mine.png",
+      "ic_give_hug.png",
+      "ic_give_hug_normal.png",
+      "ic_hug_big.png",
+      "ic_mood_lock.png",
+      "ic_sign_date.png",
+      "ic_tree_sign.png",
+      "ic_small_white_love.png",
+      "ic_heart_w.png",
+      "ic_dynamic_flag.png",
+      "ic_dynamic_folow.png",
+      "ic_chat_voice.png",
+      "ic_audio_voice.png",
+      "ic_voice_w.png",
+      "ic_match_voice.png",
+      "ic_title_love.png",
+      "ic_play_love_playing.png",
+      "ic_play_love_pause.png"
+    ],
+    "mood": [
+      "mood_default.png",
+      "mood_white.png",
+      "mood_w.png",
+      "mood_home_empty.png",
+      "mood_happy.png",
+      "mood_unhappy.png",
+      "ic_mood_change.png",
+      "ic_mood_fen.png",
+      "ic_mood_more.png",
+      "ic_mood_negative.png",
+      "ic_mood_neative.png",
+      "ic_mood_week.png",
+      "ic_mood_share.png",
+      "ic_mood_report.png",
+      "ic_mood_sign_bg.png",
+      "ic_mood_sign_top_bg.png"
+    ],
+    "sorrow": [
+      "sorrow_house.png",
+      "sorrow_home.png",
+      "letter_new.png",
+      "letter_can_open.png",
+      "letter_opened.png",
+      "letter_empty.png",
+      "letter_stamp.png",
+      "letter_send_empty.png",
+      "letter_open_big.png",
+      "letter_send_ok.png"
+    ],
+    "fm": [
+      "fm_radio.png",
+      "fm_mine.png",
+      "fm_play.png",
+      "fm_music.png"
+    ],
+    "assets_baobao": [
+      "baobao_0.png",
+      "baobao_1.png",
+      "baobao_2.png",
+      "baobao_3.png"
+    ],
+    "assets_open": [
+      "open_0.png",
+      "open_1.png"
+    ],
+    "empty": [
+      "empty_star.png",
+      "empty_search.png",
+      "empty_song.png",
+      "empty_report.png"
+    ],
+    "misc": [
+      "ic_wish.png",
+      "ic_star_bg.png",
+      "ic_login_top_bg.png",
+      "ic_login_bottom.png",
+      "ic_sign_top_bg.png",
+      "ic_star_view_0.png",
+      "ic_star_view_1.png",
+      "ic_star_view_2.png",
+      "ic_star_view_3.png",
+      "ic_wish_star.png",
+      "ic_wish_bottom_bg.png",
+      "ic_plan_home_bg.png",
+      "ic_connect_bg.png",
+      "ic_connect_home.png",
+      "bg_sea.png",
+      "bg_chat_room.png",
+      "ic_diary_home_first.png",
+      "ic_diary_home_first_bottom.png",
+      "ic_flag_top_bg.png",
+      "ic_flag_userfo.png",
+      "ic_comment_app_bg.png",
+      "ic_gift_star.png",
+      "ic_guard_top_bg.png",
+      "ic_help_top_bg.png",
+      "ic_quan_top_bg.png",
+      "ic_rank_top_bg.png",
+      "ic_star_connect_top_bg.png",
+      "ic_app_sign_top_bg.png"
+    ],
+    "bwg": [
+      "ic_bwg_bg.png",
+      "ic_bwg_yue.png",
+      "ic_sorrow_xun.png",
+      "ic_mail_top_bg.png",
+      "ic_letter_send_top.png",
+      "ic_sorrow_letter_open.png",
+      "ic_sorrow_letter_close.png",
+      "ic_sorrow_letter_send.png",
+      "ic_letter_left_normal.png",
+      "ic_letter_right_normal.png",
+      "ic_letter_left_open.png",
+      "ic_letter_right_open.png",
+      "ic_letter_small_open.png",
+      "ic_letter_reply.png",
+      "ic_letter_gift.png",
+      "ic_letter_b.png",
+      "ic_future_home_big.png",
+      "ic_future_home_bottom.png",
+      "ic_future_letter.png",
+      "ic_past_home_big.png",
+      "ic_past_home_small.png",
+      "ic_past_bottom_bg.png",
+      "ic_sorrow_write_tip.png"
+    ],
+    "mine": [
+      "ic_mine_bg.png",
+      "app_user_home_background.png",
+      "ic_user_hom_top.png",
+      "ic_user_wold_bg.png",
+      "ic_user_dress.png",
+      "ic_user_head_ni.png",
+      "ic_voice_card.png",
+      "ic_mine_daily.png",
+      "ic_mine_future.png",
+      "ic_mine_past.png",
+      "ic_mine_star.png",
+      "ic_mine_wish.png",
+      "ic_mine_gift.png",
+      "ic_mine_safe.png",
+      "ic_mine_set.png",
+      "ic_mine_clock_in.png",
+      "ic_guard.png",
+      "ic_guard_big.png",
+      "ic_flag_small.png",
+      "ic_flag_cure.png",
+      "ic_flag_inters.png"
+    ],
+    "chat": [
+      "ic_chat_bg1.png",
+      "ic_chat_bg2.png",
+      "ic_chat_bg3.png",
+      "ic_chat_bg_no.png",
+      "ic_chat_room_add_head.png",
+      "ic_group_room.png"
+    ],
+    "audio": [
+      "refresh_song.mp3",
+      "ps_click_music.wav",
+      "notice_song.mp3"
+    ]
+  },
+  "files": [
+    {
+      "file": "icon/app_launcher.png",
+      "apk_path": "res/mipmap-xxhdpi-v4/ic_launcher.png",
+      "format": "png",
+      "width": 576,
+      "height": 576,
+      "bytes": 11533,
+      "purpose": "App 启动图标(方)"
+    },
+    {
+      "file": "icon/app_launcher_round.png",
+      "apk_path": "res/mipmap-xxhdpi-v4/ic_launcher_round.png",
+      "format": "png",
+      "width": 576,
+      "height": 576,
+      "bytes": 14615,
+      "purpose": "App 启动图标(圆)"
+    },
+    {
+      "file": "icon/logo_suisui.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_suisui.png",
+      "format": "png",
+      "width": 72,
+      "height": 63,
+      "bytes": 934,
+      "purpose": "岁岁 logo"
+    },
+    {
+      "file": "icon/logo_suisui_app.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_suisui_app.png",
+      "format": "png",
+      "width": 120,
+      "height": 120,
+      "bytes": 2236,
+      "purpose": "岁岁应用 logo"
+    },
+    {
+      "file": "tab/tab_mood.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_tab_mood.png",
+      "format": "png",
+      "width": 66,
+      "height": 66,
+      "bytes": 927,
+      "purpose": "底部Tab-碎碎念(未选)"
+    },
+    {
+      "file": "tab/tab_mood_sel.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_tab_mood_choose.png",
+      "format": "png",
+      "width": 66,
+      "height": 66,
+      "bytes": 926,
+      "purpose": "底部Tab-碎碎念(选中)"
+    },
+    {
+      "file": "tab/tab_tree.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_tab_tree.png",
+      "format": "png",
+      "width": 66,
+      "height": 66,
+      "bytes": 868,
+      "purpose": "底部Tab-树洞(未选)"
+    },
+    {
+      "file": "tab/tab_tree_sel.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_tab_tree_choose.png",
+      "format": "png",
+      "width": 66,
+      "height": 66,
+      "bytes": 690,
+      "purpose": "底部Tab-树洞(选中)"
+    },
+    {
+      "file": "tab/tab_sorrow.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_tab_sorrow.png",
+      "format": "png",
+      "width": 66,
+      "height": 66,
+      "bytes": 646,
+      "purpose": "底部Tab-解忧馆(未选)"
+    },
+    {
+      "file": "tab/tab_sorrow_sel.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_tab_sorrow_choose.png",
+      "format": "png",
+      "width": 66,
+      "height": 66,
+      "bytes": 566,
+      "purpose": "底部Tab-解忧馆(选中)"
+    },
+    {
+      "file": "tab/tab_hudong.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_tab_hudong.png",
+      "format": "png",
+      "width": 66,
+      "height": 66,
+      "bytes": 996,
+      "purpose": "底部Tab-互动(未选)"
+    },
+    {
+      "file": "tab/tab_hudong_sel.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_tab_hudong_choose.png",
+      "format": "png",
+      "width": 66,
+      "height": 66,
+      "bytes": 904,
+      "purpose": "底部Tab-互动(选中)"
+    },
+    {
+      "file": "tab/tab_mine.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_tab_mine.png",
+      "format": "png",
+      "width": 66,
+      "height": 66,
+      "bytes": 845,
+      "purpose": "底部Tab-我的(未选)"
+    },
+    {
+      "file": "tab/tab_mine_sel.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_tab_mine_choose.png",
+      "format": "png",
+      "width": 66,
+      "height": 66,
+      "bytes": 821,
+      "purpose": "底部Tab-我的(选中)"
+    },
+    {
+      "file": "feed/ic_like.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_like_normal.png",
+      "format": "png",
+      "width": 57,
+      "height": 57,
+      "bytes": 647,
+      "purpose": "动态-点赞(未选)"
+    },
+    {
+      "file": "feed/ic_like_sel.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_like_select.png",
+      "format": "png",
+      "width": 57,
+      "height": 57,
+      "bytes": 528,
+      "purpose": "动态-点赞(选中)"
+    },
+    {
+      "file": "feed/ic_comment.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_msg_more.png",
+      "format": "png",
+      "width": 75,
+      "height": 75,
+      "bytes": 964,
+      "purpose": "动态-评论"
+    },
+    {
+      "file": "feed/ic_favorite.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_love_normal.png",
+      "format": "png",
+      "width": 51,
+      "height": 45,
+      "bytes": 588,
+      "purpose": "动态-收藏(未选)"
+    },
+    {
+      "file": "feed/ic_favorite_sel.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_love_select.png",
+      "format": "png",
+      "width": 51,
+      "height": 45,
+      "bytes": 456,
+      "purpose": "动态-收藏(选中)"
+    },
+    {
+      "file": "feed/ic_share.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_share_black.png",
+      "format": "png",
+      "width": 48,
+      "height": 48,
+      "bytes": 911,
+      "purpose": "动态-分享"
+    },
+    {
+      "file": "feed/ic_voice_play.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_audio_play.png",
+      "format": "png",
+      "width": 161,
+      "height": 78,
+      "bytes": 2966,
+      "purpose": "语音播放"
+    },
+    {
+      "file": "feed/ic_sex_male.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sex_man.png",
+      "format": "png",
+      "width": 75,
+      "height": 75,
+      "bytes": 2037,
+      "purpose": "性别-男"
+    },
+    {
+      "file": "feed/ic_sex_female.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sex_faimal.png",
+      "format": "png",
+      "width": 75,
+      "height": 75,
+      "bytes": 1998,
+      "purpose": "性别-女"
+    },
+    {
+      "file": "feed/ic_avatar_default.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_user_default.png",
+      "format": "png",
+      "width": 123,
+      "height": 123,
+      "bytes": 2249,
+      "purpose": "默认头像"
+    },
+    {
+      "file": "feed/ic_dynamic_mine.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_dynamic_mine.png",
+      "format": "png",
+      "width": 360,
+      "height": 360,
+      "bytes": 12674,
+      "purpose": "动态-我的标记"
+    },
+    {
+      "file": "mood/mood_default.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_default.png",
+      "format": "png",
+      "width": 800,
+      "height": 800,
+      "bytes": 27097,
+      "purpose": "心情-默认"
+    },
+    {
+      "file": "mood/mood_white.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_white.png",
+      "format": "png",
+      "width": 60,
+      "height": 60,
+      "bytes": 799,
+      "purpose": "心情-白"
+    },
+    {
+      "file": "mood/mood_w.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_w.png",
+      "format": "png",
+      "width": 60,
+      "height": 60,
+      "bytes": 633,
+      "purpose": "心情-W"
+    },
+    {
+      "file": "mood/mood_home_empty.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_home_empty.png",
+      "format": "png",
+      "width": 480,
+      "height": 390,
+      "bytes": 3182,
+      "purpose": "心情-首页空"
+    },
+    {
+      "file": "mood/mood_happy.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_hapy.png",
+      "format": "png",
+      "width": 240,
+      "height": 240,
+      "bytes": 2155,
+      "purpose": "心情-开心"
+    },
+    {
+      "file": "mood/mood_unhappy.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_un_hapy.png",
+      "format": "png",
+      "width": 240,
+      "height": 240,
+      "bytes": 2112,
+      "purpose": "心情-不开心"
+    },
+    {
+      "file": "sorrow/sorrow_house.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_bwg.png",
+      "format": "png",
+      "width": 42,
+      "height": 42,
+      "bytes": 481,
+      "purpose": "解忧馆入口"
+    },
+    {
+      "file": "sorrow/sorrow_home.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_home.png",
+      "format": "png",
+      "width": 1620,
+      "height": 2085,
+      "bytes": 333039,
+      "purpose": "解忧馆-首页"
+    },
+    {
+      "file": "sorrow/letter_new.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_letter_new.png",
+      "format": "png",
+      "width": 57,
+      "height": 57,
+      "bytes": 948,
+      "purpose": "信件-新"
+    },
+    {
+      "file": "sorrow/letter_can_open.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_letter_can_open.png",
+      "format": "png",
+      "width": 126,
+      "height": 89,
+      "bytes": 2620,
+      "purpose": "信件-可拆"
+    },
+    {
+      "file": "sorrow/letter_opened.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_letter_has_open.png",
+      "format": "png",
+      "width": 126,
+      "height": 89,
+      "bytes": 2944,
+      "purpose": "信件-已拆"
+    },
+    {
+      "file": "sorrow/letter_empty.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_letter_empty.png",
+      "format": "png",
+      "width": 360,
+      "height": 360,
+      "bytes": 16758,
+      "purpose": "信件-空"
+    },
+    {
+      "file": "sorrow/letter_stamp.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_letter_youpiao.png",
+      "format": "png",
+      "width": 180,
+      "height": 110,
+      "bytes": 3795,
+      "purpose": "信件-邮票"
+    },
+    {
+      "file": "sorrow/letter_send_empty.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_letter_send_empty.png",
+      "format": "png",
+      "width": 360,
+      "height": 360,
+      "bytes": 10208,
+      "purpose": "寄信-空"
+    },
+    {
+      "file": "sorrow/letter_open_big.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_open_letter.png",
+      "format": "png",
+      "width": 1620,
+      "height": 3017,
+      "bytes": 362437,
+      "purpose": "拆信大图"
+    },
+    {
+      "file": "sorrow/letter_send_ok.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_send_letter_success.png",
+      "format": "png",
+      "width": 405,
+      "height": 303,
+      "bytes": 34006,
+      "purpose": "寄信成功"
+    },
+    {
+      "file": "fm/fm_radio.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_play_radio.png",
+      "format": "png",
+      "width": 65,
+      "height": 59,
+      "bytes": 1020,
+      "purpose": "FM电台"
+    },
+    {
+      "file": "fm/fm_mine.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_fm.png",
+      "format": "png",
+      "width": 141,
+      "height": 141,
+      "bytes": 4373,
+      "purpose": "我的-FM入口"
+    },
+    {
+      "file": "fm/fm_play.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_play_song_radio.png",
+      "format": "png",
+      "width": 45,
+      "height": 45,
+      "bytes": 1172,
+      "purpose": "FM-播放"
+    },
+    {
+      "file": "fm/fm_music.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_music.png",
+      "format": "png",
+      "width": 51,
+      "height": 54,
+      "bytes": 738,
+      "purpose": "FM-音符"
+    },
+    {
+      "file": "assets_baobao/baobao_0.png",
+      "apk_path": "assets/baobao/img_0.png",
+      "format": "png",
+      "width": 102,
+      "height": 80,
+      "bytes": 1810,
+      "purpose": "宝宝表情1"
+    },
+    {
+      "file": "assets_baobao/baobao_1.png",
+      "apk_path": "assets/baobao/img_1.png",
+      "format": "png",
+      "width": 320,
+      "height": 320,
+      "bytes": 5001,
+      "purpose": "宝宝表情2"
+    },
+    {
+      "file": "assets_baobao/baobao_2.png",
+      "apk_path": "assets/baobao/img_2.png",
+      "format": "png",
+      "width": 320,
+      "height": 320,
+      "bytes": 4593,
+      "purpose": "宝宝表情3"
+    },
+    {
+      "file": "assets_baobao/baobao_3.png",
+      "apk_path": "assets/baobao/img_3.png",
+      "format": "png",
+      "width": 320,
+      "height": 320,
+      "bytes": 4496,
+      "purpose": "宝宝表情4"
+    },
+    {
+      "file": "assets_open/open_0.png",
+      "apk_path": "assets/open/img_0.png",
+      "format": "png",
+      "width": 518,
+      "height": 368,
+      "bytes": 33585,
+      "purpose": "开启页图1"
+    },
+    {
+      "file": "assets_open/open_1.png",
+      "apk_path": "assets/open/img_1.png",
+      "format": "png",
+      "width": 374,
+      "height": 384,
+      "bytes": 16779,
+      "purpose": "开启页图2"
+    },
+    {
+      "file": "empty/empty_star.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_star_home_empty.png",
+      "format": "png",
+      "width": 1059,
+      "height": 705,
+      "bytes": 163489,
+      "purpose": "空状态-星"
+    },
+    {
+      "file": "empty/empty_search.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_search_empty.png",
+      "format": "png",
+      "width": 438,
+      "height": 468,
+      "bytes": 8429,
+      "purpose": "空状态-搜索"
+    },
+    {
+      "file": "empty/empty_song.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_song_empty.png",
+      "format": "png",
+      "width": 360,
+      "height": 360,
+      "bytes": 19271,
+      "purpose": "空状态-歌曲"
+    },
+    {
+      "file": "empty/empty_report.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_quard_report_empty.png",
+      "format": "png",
+      "width": 600,
+      "height": 609,
+      "bytes": 37326,
+      "purpose": "空状态-报告"
+    },
+    {
+      "file": "misc/ic_wish.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_wish.png",
+      "format": "png",
+      "width": 102,
+      "height": 102,
+      "bytes": 2512,
+      "purpose": "许愿"
+    },
+    {
+      "file": "misc/ic_star_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_star_add_bg.png",
+      "format": "png",
+      "width": 975,
+      "height": 1134,
+      "bytes": 5462,
+      "purpose": "星标背景"
+    },
+    {
+      "file": "bwg/ic_bwg_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_yun.png",
+      "format": "png",
+      "bytes": 436048,
+      "purpose": "不晚博物馆水彩星球背景(云)",
+      "width": 1620,
+      "height": 1691
+    },
+    {
+      "file": "bwg/ic_bwg_yue.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_yue.png",
+      "format": "png",
+      "bytes": 95107,
+      "purpose": "不晚博物馆星球-月",
+      "width": 999,
+      "height": 974
+    },
+    {
+      "file": "bwg/ic_sorrow_xun.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_xun.png",
+      "format": "png",
+      "bytes": 816,
+      "purpose": "解忧-星(小)",
+      "width": 54,
+      "height": 54
+    },
+    {
+      "file": "bwg/ic_mail_top_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_my_send_letter_top_bg.png",
+      "format": "png",
+      "bytes": 52766,
+      "purpose": "邮局-我的信顶部信封",
+      "width": 975,
+      "height": 300
+    },
+    {
+      "file": "bwg/ic_letter_send_top.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_letter_send_top.png",
+      "format": "png",
+      "bytes": 22001,
+      "purpose": "邮局-寄信顶部信封",
+      "width": 975,
+      "height": 300
+    },
+    {
+      "file": "bwg/ic_sorrow_letter_open.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_letter_open.png",
+      "format": "png",
+      "bytes": 41794,
+      "purpose": "解忧-拆信大图",
+      "width": 906,
+      "height": 582
+    },
+    {
+      "file": "bwg/ic_sorrow_letter_close.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_letter_close.png",
+      "format": "png",
+      "bytes": 92033,
+      "purpose": "解忧-合信大图",
+      "width": 906,
+      "height": 582
+    },
+    {
+      "file": "bwg/ic_sorrow_letter_send.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_letter_send.png",
+      "format": "png",
+      "bytes": 54342,
+      "purpose": "解忧-寄信插画",
+      "width": 930,
+      "height": 600
+    },
+    {
+      "file": "bwg/ic_letter_left_normal.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_letter_left_normal.png",
+      "format": "png",
+      "bytes": 2593,
+      "purpose": "信件-左未拆",
+      "width": 116,
+      "height": 104
+    },
+    {
+      "file": "bwg/ic_letter_right_normal.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_letter_right_normal.png",
+      "format": "png",
+      "bytes": 2554,
+      "purpose": "信件-右未拆",
+      "width": 123,
+      "height": 105
+    },
+    {
+      "file": "bwg/ic_letter_left_open.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_letter_left_bottom_open.png",
+      "format": "png",
+      "bytes": 2747,
+      "purpose": "信件-左已拆",
+      "width": 114,
+      "height": 128
+    },
+    {
+      "file": "bwg/ic_letter_right_open.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_letter_right_bottom_open.png",
+      "format": "png",
+      "bytes": 2750,
+      "purpose": "信件-右已拆",
+      "width": 114,
+      "height": 128
+    },
+    {
+      "file": "bwg/ic_letter_small_open.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_letter_small_open.png",
+      "format": "png",
+      "bytes": 993,
+      "purpose": "信件-小拆",
+      "width": 45,
+      "height": 57
+    },
+    {
+      "file": "bwg/ic_letter_reply.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_letter_reply.png",
+      "format": "png",
+      "bytes": 598,
+      "purpose": "信件-回复",
+      "width": 45,
+      "height": 42
+    },
+    {
+      "file": "bwg/ic_letter_gift.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_letter_gift.png",
+      "format": "png",
+      "bytes": 460,
+      "purpose": "信件-礼物",
+      "width": 45,
+      "height": 44
+    },
+    {
+      "file": "bwg/ic_letter_b.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_letter_b.png",
+      "format": "png",
+      "bytes": 624,
+      "purpose": "信件-标B",
+      "width": 48,
+      "height": 48
+    },
+    {
+      "file": "bwg/ic_future_home_big.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_future_home_big.png",
+      "format": "png",
+      "bytes": 154980,
+      "purpose": "未来馆-顶部插画",
+      "width": 750,
+      "height": 1292
+    },
+    {
+      "file": "bwg/ic_future_home_bottom.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_future_home_bottom.png",
+      "format": "png",
+      "bytes": 192131,
+      "purpose": "未来馆-底部插画",
+      "width": 1344,
+      "height": 776
+    },
+    {
+      "file": "bwg/ic_future_letter.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_future_letter.png",
+      "format": "png",
+      "bytes": 1572,
+      "purpose": "未来馆-信封小图标",
+      "width": 45,
+      "height": 38
+    },
+    {
+      "file": "bwg/ic_past_home_big.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_past_home_big.png",
+      "format": "png",
+      "bytes": 126216,
+      "purpose": "现在馆-顶部插画",
+      "width": 750,
+      "height": 1301
+    },
+    {
+      "file": "bwg/ic_past_home_small.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_past_home_small.png",
+      "format": "png",
+      "bytes": 29884,
+      "purpose": "现在馆-小插画",
+      "width": 392,
+      "height": 552
+    },
+    {
+      "file": "bwg/ic_past_bottom_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_past_bottom_bg.png",
+      "format": "png",
+      "bytes": 190379,
+      "purpose": "现在馆-底部背景",
+      "width": 1125,
+      "height": 737
+    },
+    {
+      "file": "bwg/ic_sorrow_write_tip.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_write_tip.png",
+      "format": "png",
+      "bytes": 45814,
+      "purpose": "解忧-写信提示",
+      "width": 930,
+      "height": 480
+    },
+    {
+      "file": "feed/ic_give_hug.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_baobao.png",
+      "format": "png",
+      "bytes": 2643,
+      "purpose": "送抱抱(月牙小人)",
+      "width": 120,
+      "height": 120
+    },
+    {
+      "file": "feed/ic_give_hug_normal.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_baobao_normal.png",
+      "format": "png",
+      "bytes": 2306,
+      "purpose": "送抱抱-常态",
+      "width": 120,
+      "height": 120
+    },
+    {
+      "file": "feed/ic_hug_big.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_gift_bao.png",
+      "format": "png",
+      "bytes": 61453,
+      "purpose": "抱抱大贴纸",
+      "width": 685,
+      "height": 685
+    },
+    {
+      "file": "feed/ic_mood_lock.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_lock.png",
+      "format": "png",
+      "bytes": 558,
+      "purpose": "私密小锁",
+      "width": 30,
+      "height": 36
+    },
+    {
+      "file": "feed/ic_sign_date.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sign.png",
+      "format": "png",
+      "bytes": 726,
+      "purpose": "日签入口",
+      "width": 60,
+      "height": 60
+    },
+    {
+      "file": "feed/ic_tree_sign.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_tree_sign.png",
+      "format": "png",
+      "bytes": 2231,
+      "purpose": "树洞日签",
+      "width": 150,
+      "height": 150
+    },
+    {
+      "file": "feed/ic_small_white_love.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_small_white_love.png",
+      "format": "png",
+      "bytes": 528,
+      "purpose": "小白爱心",
+      "width": 35,
+      "height": 30
+    },
+    {
+      "file": "feed/ic_heart_w.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_love_w.png",
+      "format": "png",
+      "bytes": 1039,
+      "purpose": "爱心-白",
+      "width": 48,
+      "height": 48
+    },
+    {
+      "file": "feed/ic_dynamic_flag.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_dynamic_flag.png",
+      "format": "png",
+      "bytes": 663,
+      "purpose": "动态-旗标",
+      "width": 45,
+      "height": 45
+    },
+    {
+      "file": "feed/ic_dynamic_folow.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_dynamic_folow.png",
+      "format": "png",
+      "bytes": 16570,
+      "purpose": "动态-关注",
+      "width": 360,
+      "height": 360
+    },
+    {
+      "file": "feed/ic_chat_voice.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_chat_voice.png",
+      "format": "png",
+      "bytes": 1513,
+      "purpose": "聊天-语音",
+      "width": 75,
+      "height": 75
+    },
+    {
+      "file": "feed/ic_audio_voice.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_audio_voice.png",
+      "format": "png",
+      "bytes": 970,
+      "purpose": "语音条-声纹",
+      "width": 66,
+      "height": 66
+    },
+    {
+      "file": "feed/ic_voice_w.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_voice_w.png",
+      "format": "png",
+      "bytes": 485,
+      "purpose": "语音-白",
+      "width": 42,
+      "height": 42
+    },
+    {
+      "file": "feed/ic_match_voice.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_match_voice.png",
+      "format": "png",
+      "bytes": 482,
+      "purpose": "匹配-语音",
+      "width": 78,
+      "height": 78
+    },
+    {
+      "file": "feed/ic_title_love.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_title_love.png",
+      "format": "png",
+      "bytes": 935,
+      "purpose": "标题-爱心",
+      "width": 65,
+      "height": 57
+    },
+    {
+      "file": "feed/ic_play_love_playing.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_play_love_playing.png",
+      "format": "png",
+      "bytes": 203,
+      "purpose": "播放中-爱心",
+      "width": 48,
+      "height": 54
+    },
+    {
+      "file": "feed/ic_play_love_pause.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_play_love_pause.png",
+      "format": "png",
+      "bytes": 518,
+      "purpose": "暂停-爱心",
+      "width": 45,
+      "height": 45
+    },
+    {
+      "file": "mine/ic_mine_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_home_top_bg.png",
+      "format": "png",
+      "bytes": 148253,
+      "purpose": "我的-顶部背景",
+      "width": 1125,
+      "height": 690
+    },
+    {
+      "file": "mine/app_user_home_background.png",
+      "apk_path": "res/drawable-xxhdpi-v4/app_user_home_background.png",
+      "format": "png",
+      "bytes": 227598,
+      "purpose": "个人主页-默认顶部背景",
+      "width": 750,
+      "height": 1257
+    },
+    {
+      "file": "mine/ic_user_hom_top.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_user_hom_top.png",
+      "format": "png",
+      "bytes": 29680,
+      "purpose": "用户主页-顶部",
+      "width": 1125,
+      "height": 578
+    },
+    {
+      "file": "mine/ic_user_wold_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_user_wold_bg.png",
+      "format": "png",
+      "bytes": 185313,
+      "purpose": "个人世界-大背景",
+      "width": 1125,
+      "height": 2436
+    },
+    {
+      "file": "mine/ic_user_dress.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_skin.png",
+      "format": "png",
+      "bytes": 4019,
+      "purpose": "岁岁装扮图标",
+      "width": 150,
+      "height": 150
+    },
+    {
+      "file": "mine/ic_user_head_ni.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_user_head_ni.png",
+      "format": "png",
+      "bytes": 1679,
+      "purpose": "头像-默认(Ni)",
+      "width": 120,
+      "height": 120
+    },
+    {
+      "file": "mine/ic_voice_card.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_match_voice.png",
+      "format": "png",
+      "bytes": 482,
+      "purpose": "声音名片图标",
+      "width": 78,
+      "height": 78
+    },
+    {
+      "file": "mine/ic_mine_daily.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_daily.png",
+      "format": "png",
+      "bytes": 3037,
+      "purpose": "我的-日签",
+      "width": 141,
+      "height": 141
+    },
+    {
+      "file": "mine/ic_mine_future.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_future.png",
+      "format": "png",
+      "bytes": 3403,
+      "purpose": "我的-未来信",
+      "width": 141,
+      "height": 141
+    },
+    {
+      "file": "mine/ic_mine_past.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_past.png",
+      "format": "png",
+      "bytes": 3334,
+      "purpose": "我的-过去信",
+      "width": 141,
+      "height": 141
+    },
+    {
+      "file": "mine/ic_mine_star.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_star.png",
+      "format": "png",
+      "bytes": 3350,
+      "purpose": "我的-星球",
+      "width": 141,
+      "height": 141
+    },
+    {
+      "file": "mine/ic_mine_wish.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_wish.png",
+      "format": "png",
+      "bytes": 3687,
+      "purpose": "我的-许愿",
+      "width": 141,
+      "height": 141
+    },
+    {
+      "file": "mine/ic_mine_gift.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_gift.png",
+      "format": "png",
+      "bytes": 2262,
+      "purpose": "我的-礼物",
+      "width": 66,
+      "height": 66
+    },
+    {
+      "file": "mine/ic_mine_safe.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_safe.png",
+      "format": "png",
+      "bytes": 3565,
+      "purpose": "我的-安全",
+      "width": 66,
+      "height": 66
+    },
+    {
+      "file": "mine/ic_mine_set.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_set.png",
+      "format": "png",
+      "bytes": 1933,
+      "purpose": "我的-设置",
+      "width": 66,
+      "height": 66
+    },
+    {
+      "file": "mine/ic_mine_clock_in.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_clock_in.png",
+      "format": "png",
+      "bytes": 3058,
+      "purpose": "我的-打卡",
+      "width": 141,
+      "height": 141
+    },
+    {
+      "file": "mine/ic_guard.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_guard.png",
+      "format": "png",
+      "bytes": 941,
+      "purpose": "守护",
+      "width": 60,
+      "height": 41
+    },
+    {
+      "file": "mine/ic_guard_big.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_guard_big.png",
+      "format": "png",
+      "bytes": 1692,
+      "purpose": "守护-大",
+      "width": 135,
+      "height": 135
+    },
+    {
+      "file": "mine/ic_flag_small.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_flag_small.png",
+      "format": "png",
+      "bytes": 1027,
+      "purpose": "旗-小",
+      "width": 42,
+      "height": 42
+    },
+    {
+      "file": "mine/ic_flag_cure.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_flag_cure.png",
+      "format": "png",
+      "bytes": 78838,
+      "purpose": "旗-治愈",
+      "width": 660,
+      "height": 660
+    },
+    {
+      "file": "mine/ic_flag_inters.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_flag_inters.png",
+      "format": "png",
+      "bytes": 74909,
+      "purpose": "旗-有趣",
+      "width": 660,
+      "height": 660
+    },
+    {
+      "file": "mood/ic_mood_change.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_change_no.png",
+      "format": "png",
+      "bytes": 7554,
+      "purpose": "心情-换",
+      "width": 279,
+      "height": 225
+    },
+    {
+      "file": "mood/ic_mood_fen.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_fen_no.png",
+      "format": "png",
+      "bytes": 2548,
+      "purpose": "心情-分",
+      "width": 150,
+      "height": 150
+    },
+    {
+      "file": "mood/ic_mood_more.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_more_no.png",
+      "format": "png",
+      "bytes": 9291,
+      "purpose": "心情-更多",
+      "width": 279,
+      "height": 225
+    },
+    {
+      "file": "mood/ic_mood_negative.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_negative_no.png",
+      "format": "png",
+      "bytes": 6343,
+      "purpose": "心情-低落",
+      "width": 279,
+      "height": 225
+    },
+    {
+      "file": "mood/ic_mood_neative.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_neative.png",
+      "format": "png",
+      "bytes": 3444,
+      "purpose": "心情-负",
+      "width": 102,
+      "height": 102
+    },
+    {
+      "file": "mood/ic_mood_week.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_week_no.png",
+      "format": "png",
+      "bytes": 5700,
+      "purpose": "心情-周",
+      "width": 279,
+      "height": 225
+    },
+    {
+      "file": "mood/ic_mood_share.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_share_w.png",
+      "format": "png",
+      "bytes": 1031,
+      "purpose": "心情-分享",
+      "width": 60,
+      "height": 60
+    },
+    {
+      "file": "mood/ic_mood_report.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_report.png",
+      "format": "png",
+      "bytes": 2414,
+      "purpose": "心情-报告",
+      "width": 150,
+      "height": 150
+    },
+    {
+      "file": "mood/ic_mood_sign_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_sign_bg.png",
+      "format": "png",
+      "bytes": 4755,
+      "purpose": "心情-日签背景",
+      "width": 600,
+      "height": 519
+    },
+    {
+      "file": "mood/ic_mood_sign_top_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_sign_record_top_bg.png",
+      "format": "png",
+      "bytes": 44305,
+      "purpose": "心情-日签记录顶图",
+      "width": 1125,
+      "height": 792
+    },
+    {
+      "file": "misc/ic_login_top_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_login_top_bg.png",
+      "format": "png",
+      "bytes": 118577,
+      "purpose": "登录-顶部插画",
+      "width": 1125,
+      "height": 1191
+    },
+    {
+      "file": "misc/ic_login_bottom.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_login_bottom.png",
+      "format": "png",
+      "bytes": 34192,
+      "purpose": "登录-底部插画",
+      "width": 1125,
+      "height": 506
+    },
+    {
+      "file": "misc/ic_sign_top_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sign_top_bg.png",
+      "format": "png",
+      "bytes": 48489,
+      "purpose": "日签-顶部",
+      "width": 960,
+      "height": 303
+    },
+    {
+      "file": "misc/ic_star_view_0.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_star_view_0.png",
+      "format": "png",
+      "bytes": 119929,
+      "purpose": "星球视角0",
+      "width": 981,
+      "height": 750
+    },
+    {
+      "file": "misc/ic_star_view_1.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_star_view_1.png",
+      "format": "png",
+      "bytes": 127144,
+      "purpose": "星球视角1",
+      "width": 981,
+      "height": 750
+    },
+    {
+      "file": "misc/ic_star_view_2.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_star_view_2.png",
+      "format": "png",
+      "bytes": 126240,
+      "purpose": "星球视角2",
+      "width": 981,
+      "height": 750
+    },
+    {
+      "file": "misc/ic_star_view_3.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_star_view_3.png",
+      "format": "png",
+      "bytes": 164128,
+      "purpose": "星球视角3",
+      "width": 981,
+      "height": 750
+    },
+    {
+      "file": "misc/ic_wish_star.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_wish_star.png",
+      "format": "png",
+      "bytes": 547472,
+      "purpose": "许愿星-大插画",
+      "width": 1125,
+      "height": 2387
+    },
+    {
+      "file": "misc/ic_wish_bottom_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_wish_bottom_bg.png",
+      "format": "png",
+      "bytes": 193535,
+      "purpose": "许愿-底部",
+      "width": 1125,
+      "height": 806
+    },
+    {
+      "file": "misc/ic_plan_home_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_plan_home_bg.png",
+      "format": "png",
+      "bytes": 417924,
+      "purpose": "计划-主页背景",
+      "width": 1125,
+      "height": 1806
+    },
+    {
+      "file": "misc/ic_connect_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_connect_bg.png",
+      "format": "png",
+      "bytes": 290509,
+      "purpose": "联系-背景",
+      "width": 1125,
+      "height": 2001
+    },
+    {
+      "file": "misc/ic_connect_home.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_connect_home.png",
+      "format": "png",
+      "bytes": 154735,
+      "purpose": "联系-主页插画",
+      "width": 939,
+      "height": 1085
+    },
+    {
+      "file": "misc/bg_sea.png",
+      "apk_path": "res/drawable-xxhdpi-v4/bg_sea.png",
+      "format": "png",
+      "bytes": 371168,
+      "purpose": "海-背景",
+      "width": 1125,
+      "height": 2001
+    },
+    {
+      "file": "misc/bg_chat_room.png",
+      "apk_path": "res/drawable-xxhdpi-v4/bg_chat_room.png",
+      "format": "png",
+      "bytes": 713005,
+      "purpose": "聊天室-背景",
+      "width": 2250,
+      "height": 5522
+    },
+    {
+      "file": "misc/ic_diary_home_first.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_diary_home_first.png",
+      "format": "png",
+      "bytes": 36393,
+      "purpose": "日记-首页插画",
+      "width": 510,
+      "height": 453
+    },
+    {
+      "file": "misc/ic_diary_home_first_bottom.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_diary_home_first_bottom.png",
+      "format": "png",
+      "bytes": 149872,
+      "purpose": "日记-底部插画",
+      "width": 1125,
+      "height": 1001
+    },
+    {
+      "file": "misc/ic_flag_top_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_flag_top_bg.png",
+      "format": "png",
+      "bytes": 17539,
+      "purpose": "旗-顶部",
+      "width": 930,
+      "height": 647
+    },
+    {
+      "file": "misc/ic_flag_userfo.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_flag_userfo.png",
+      "format": "png",
+      "bytes": 85337,
+      "purpose": "旗-用户信息",
+      "width": 660,
+      "height": 660
+    },
+    {
+      "file": "misc/ic_comment_app_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_comment_app_bg.png",
+      "format": "png",
+      "bytes": 128806,
+      "purpose": "评论-app底",
+      "width": 870,
+      "height": 1035
+    },
+    {
+      "file": "misc/ic_gift_star.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_gift_star.png",
+      "format": "png",
+      "bytes": 66743,
+      "purpose": "礼物-星",
+      "width": 685,
+      "height": 685
+    },
+    {
+      "file": "misc/ic_guard_top_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_guard_top_bg.png",
+      "format": "png",
+      "bytes": 103316,
+      "purpose": "守护-顶图",
+      "width": 1125,
+      "height": 1211
+    },
+    {
+      "file": "misc/ic_help_top_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_help_top_bg.png",
+      "format": "png",
+      "bytes": 18766,
+      "purpose": "帮助-顶图",
+      "width": 1125,
+      "height": 771
+    },
+    {
+      "file": "misc/ic_quan_top_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_quan_top_bg.png",
+      "format": "png",
+      "bytes": 9847,
+      "purpose": "圈-顶图",
+      "width": 840,
+      "height": 330
+    },
+    {
+      "file": "misc/ic_rank_top_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_rank_top_bg.png",
+      "format": "png",
+      "bytes": 79164,
+      "purpose": "榜-顶图",
+      "width": 1125,
+      "height": 552
+    },
+    {
+      "file": "misc/ic_star_connect_top_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_star_connect_top_bg.png",
+      "format": "png",
+      "bytes": 124135,
+      "purpose": "星-连接顶图",
+      "width": 870,
+      "height": 570
+    },
+    {
+      "file": "misc/ic_app_sign_top_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_app_sign_top_bg.png",
+      "format": "png",
+      "bytes": 86556,
+      "purpose": "app-日签顶图",
+      "width": 1125,
+      "height": 480
+    },
+    {
+      "file": "chat/ic_chat_bg1.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_chat_bg1.png",
+      "format": "png",
+      "bytes": 45298,
+      "purpose": "聊天气泡底1",
+      "width": 315,
+      "height": 315
+    },
+    {
+      "file": "chat/ic_chat_bg2.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_chat_bg2.png",
+      "format": "png",
+      "bytes": 38322,
+      "purpose": "聊天气泡底2",
+      "width": 315,
+      "height": 315
+    },
+    {
+      "file": "chat/ic_chat_bg3.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_chat_bg3.png",
+      "format": "png",
+      "bytes": 48104,
+      "purpose": "聊天气泡底3",
+      "width": 315,
+      "height": 315
+    },
+    {
+      "file": "chat/ic_chat_bg_no.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_chat_bg_no.png",
+      "format": "png",
+      "bytes": 803,
+      "purpose": "聊天气泡底-默认",
+      "width": 60,
+      "height": 60
+    },
+    {
+      "file": "chat/ic_chat_room_add_head.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_chat_room_add_head.png",
+      "format": "png",
+      "bytes": 1592,
+      "purpose": "群聊-加人",
+      "width": 153,
+      "height": 153
+    },
+    {
+      "file": "chat/ic_group_room.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_group_room.png",
+      "format": "png",
+      "bytes": 34276,
+      "purpose": "群聊-房间",
+      "width": 300,
+      "height": 300
+    },
+    {
+      "file": "audio/refresh_song.mp3",
+      "apk_path": "res/raw/refresh_song.mp3",
+      "format": "mp3",
+      "bytes": 7881,
+      "purpose": "刷新轻音效"
+    },
+    {
+      "file": "audio/ps_click_music.wav",
+      "apk_path": "res/raw/ps_click_music.wav",
+      "format": "wav",
+      "bytes": 19450,
+      "purpose": "点击音效"
+    },
+    {
+      "file": "audio/notice_song.mp3",
+      "apk_path": "res/raw/notice_song.mp3",
+      "format": "mp3",
+      "bytes": 64973,
+      "purpose": "新消息提示音"
+    }
+  ],
+  "file_count": 163,
+  "total_bytes": 8283485
+}

@@ -1,0 +1,593 @@
+{
+  "total_extracted": 84,
+  "files": [
+    {
+      "filename": "bg_join_time.png",
+      "apk_path": "res/drawable-xxhdpi-v4/bg_join_time.png",
+      "width": 180,
+      "height": 180,
+      "bytes": 8642
+    },
+    {
+      "filename": "ic_baobao.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_baobao.png",
+      "width": 120,
+      "height": 120,
+      "bytes": 2643
+    },
+    {
+      "filename": "ic_baobao_normal.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_baobao_normal.png",
+      "width": 120,
+      "height": 120,
+      "bytes": 2306
+    },
+    {
+      "filename": "ic_bgm_pause.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_bgm_pause.png",
+      "width": 30,
+      "height": 30,
+      "bytes": 248
+    },
+    {
+      "filename": "ic_bgm_play.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_bgm_play.png",
+      "width": 30,
+      "height": 30,
+      "bytes": 351
+    },
+    {
+      "filename": "ic_chat_bg10.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_chat_bg10.png",
+      "width": 315,
+      "height": 315,
+      "bytes": 32434
+    },
+    {
+      "filename": "ic_chat_bg11.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_chat_bg11.png",
+      "width": 315,
+      "height": 315,
+      "bytes": 30008
+    },
+    {
+      "filename": "ic_chat_bg4.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_chat_bg4.png",
+      "width": 315,
+      "height": 315,
+      "bytes": 20034
+    },
+    {
+      "filename": "ic_chat_bg5.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_chat_bg5.png",
+      "width": 315,
+      "height": 315,
+      "bytes": 14005
+    },
+    {
+      "filename": "ic_chat_bg6.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_chat_bg6.png",
+      "width": 315,
+      "height": 315,
+      "bytes": 14804
+    },
+    {
+      "filename": "ic_chat_bg7.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_chat_bg7.png",
+      "width": 315,
+      "height": 315,
+      "bytes": 24621
+    },
+    {
+      "filename": "ic_chat_bg8.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_chat_bg8.png",
+      "width": 315,
+      "height": 315,
+      "bytes": 16968
+    },
+    {
+      "filename": "ic_chat_bg9.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_chat_bg9.png",
+      "width": 315,
+      "height": 315,
+      "bytes": 10270
+    },
+    {
+      "filename": "ic_future_home_big.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_future_home_big.png",
+      "width": 750,
+      "height": 1292,
+      "bytes": 154980
+    },
+    {
+      "filename": "ic_hapy.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_hapy.png",
+      "width": 240,
+      "height": 240,
+      "bytes": 2155
+    },
+    {
+      "filename": "ic_launcher_round.png",
+      "apk_path": "res/mipmap-xxhdpi-v4/ic_launcher_round.png",
+      "width": 576,
+      "height": 576,
+      "bytes": 14615
+    },
+    {
+      "filename": "ic_letter_reply.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_letter_reply.png",
+      "width": 45,
+      "height": 42,
+      "bytes": 598
+    },
+    {
+      "filename": "ic_lock.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_lock.png",
+      "width": 30,
+      "height": 36,
+      "bytes": 558
+    },
+    {
+      "filename": "ic_login_top_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_login_top_bg.png",
+      "width": 1125,
+      "height": 1191,
+      "bytes": 118577
+    },
+    {
+      "filename": "ic_mine_clock_in.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_clock_in.png",
+      "width": 141,
+      "height": 141,
+      "bytes": 3058
+    },
+    {
+      "filename": "ic_mine_daily.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_daily.png",
+      "width": 141,
+      "height": 141,
+      "bytes": 3037
+    },
+    {
+      "filename": "ic_mine_fm.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_fm.png",
+      "width": 141,
+      "height": 141,
+      "bytes": 4373
+    },
+    {
+      "filename": "ic_mine_future.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_future.png",
+      "width": 141,
+      "height": 141,
+      "bytes": 3403
+    },
+    {
+      "filename": "ic_mine_gift.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_gift.png",
+      "width": 66,
+      "height": 66,
+      "bytes": 2262
+    },
+    {
+      "filename": "ic_mine_home_top_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_home_top_bg.png",
+      "width": 1125,
+      "height": 690,
+      "bytes": 148253
+    },
+    {
+      "filename": "ic_mine_past.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_past.png",
+      "width": 141,
+      "height": 141,
+      "bytes": 3334
+    },
+    {
+      "filename": "ic_mine_safe.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_safe.png",
+      "width": 66,
+      "height": 66,
+      "bytes": 3565
+    },
+    {
+      "filename": "ic_mine_set.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_set.png",
+      "width": 66,
+      "height": 66,
+      "bytes": 1933
+    },
+    {
+      "filename": "ic_mine_star.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_star.png",
+      "width": 141,
+      "height": 141,
+      "bytes": 3350
+    },
+    {
+      "filename": "ic_mine_top_open_vip_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_top_open_vip_bg.png",
+      "width": 690,
+      "height": 160,
+      "bytes": 16582
+    },
+    {
+      "filename": "ic_mine_wish.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mine_wish.png",
+      "width": 141,
+      "height": 141,
+      "bytes": 3687
+    },
+    {
+      "filename": "ic_mood_change_no.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_change_no.png",
+      "width": 279,
+      "height": 225,
+      "bytes": 7554
+    },
+    {
+      "filename": "ic_mood_default.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_default.png",
+      "width": 800,
+      "height": 800,
+      "bytes": 27097
+    },
+    {
+      "filename": "ic_mood_fen_no.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_fen_no.png",
+      "width": 150,
+      "height": 150,
+      "bytes": 2548
+    },
+    {
+      "filename": "ic_mood_home_empty.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_home_empty.png",
+      "width": 480,
+      "height": 390,
+      "bytes": 3182
+    },
+    {
+      "filename": "ic_mood_more_no.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_more_no.png",
+      "width": 279,
+      "height": 225,
+      "bytes": 9291
+    },
+    {
+      "filename": "ic_mood_neative.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_neative.png",
+      "width": 102,
+      "height": 102,
+      "bytes": 3444
+    },
+    {
+      "filename": "ic_mood_negative_no.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_negative_no.png",
+      "width": 279,
+      "height": 225,
+      "bytes": 6343
+    },
+    {
+      "filename": "ic_mood_practic_vip.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_practic_vip.png",
+      "width": 60,
+      "height": 60,
+      "bytes": 1102
+    },
+    {
+      "filename": "ic_mood_practice.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_practice.png",
+      "width": 150,
+      "height": 150,
+      "bytes": 2075
+    },
+    {
+      "filename": "ic_mood_practice_bai_white.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_practice_bai_white.png",
+      "width": 60,
+      "height": 60,
+      "bytes": 1065
+    },
+    {
+      "filename": "ic_mood_practice_default.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_practice_default.png",
+      "width": 480,
+      "height": 390,
+      "bytes": 6571
+    },
+    {
+      "filename": "ic_mood_report.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_report.png",
+      "width": 150,
+      "height": 150,
+      "bytes": 2414
+    },
+    {
+      "filename": "ic_mood_report_top_view.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_report_top_view.png",
+      "width": 671,
+      "height": 237,
+      "bytes": 9493
+    },
+    {
+      "filename": "ic_mood_share_w.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_share_w.png",
+      "width": 60,
+      "height": 60,
+      "bytes": 1031
+    },
+    {
+      "filename": "ic_mood_sign_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_sign_bg.png",
+      "width": 600,
+      "height": 519,
+      "bytes": 4755
+    },
+    {
+      "filename": "ic_mood_sign_record_top_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_sign_record_top_bg.png",
+      "width": 1125,
+      "height": 792,
+      "bytes": 44305
+    },
+    {
+      "filename": "ic_mood_skin.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_skin.png",
+      "width": 150,
+      "height": 150,
+      "bytes": 4019
+    },
+    {
+      "filename": "ic_mood_w.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_w.png",
+      "width": 60,
+      "height": 60,
+      "bytes": 633
+    },
+    {
+      "filename": "ic_mood_week_no.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_week_no.png",
+      "width": 279,
+      "height": 225,
+      "bytes": 5700
+    },
+    {
+      "filename": "ic_mood_white.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_mood_white.png",
+      "width": 60,
+      "height": 60,
+      "bytes": 799
+    },
+    {
+      "filename": "ic_plan_view_1.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_plan_view_1.png",
+      "width": 600,
+      "height": 600,
+      "bytes": 39081
+    },
+    {
+      "filename": "ic_plan_view_2.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_plan_view_2.png",
+      "width": 600,
+      "height": 600,
+      "bytes": 45847
+    },
+    {
+      "filename": "ic_plan_view_3.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_plan_view_3.png",
+      "width": 600,
+      "height": 600,
+      "bytes": 27458
+    },
+    {
+      "filename": "ic_plan_view_4.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_plan_view_4.png",
+      "width": 600,
+      "height": 600,
+      "bytes": 34159
+    },
+    {
+      "filename": "ic_plan_view_5.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_plan_view_5.png",
+      "width": 600,
+      "height": 600,
+      "bytes": 39544
+    },
+    {
+      "filename": "ic_plan_view_6.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_plan_view_6.png",
+      "width": 600,
+      "height": 600,
+      "bytes": 23778
+    },
+    {
+      "filename": "ic_plan_view_7.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_plan_view_7.png",
+      "width": 600,
+      "height": 600,
+      "bytes": 40362
+    },
+    {
+      "filename": "ic_sorrow_home.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_home.png",
+      "width": 1620,
+      "height": 2085,
+      "bytes": 333039
+    },
+    {
+      "filename": "ic_sorrow_hu_bottom.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_hu_bottom.png",
+      "width": 1125,
+      "height": 105,
+      "bytes": 1474
+    },
+    {
+      "filename": "ic_sorrow_letter_close.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_letter_close.png",
+      "width": 906,
+      "height": 582,
+      "bytes": 92033
+    },
+    {
+      "filename": "ic_sorrow_letter_left_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_letter_left_bg.png",
+      "width": 132,
+      "height": 126,
+      "bytes": 917
+    },
+    {
+      "filename": "ic_sorrow_letter_open.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_letter_open.png",
+      "width": 906,
+      "height": 582,
+      "bytes": 41794
+    },
+    {
+      "filename": "ic_sorrow_letter_psn.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_letter_psn.png",
+      "width": 42,
+      "height": 50,
+      "bytes": 1182
+    },
+    {
+      "filename": "ic_sorrow_letter_right_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_letter_right_bg.png",
+      "width": 150,
+      "height": 143,
+      "bytes": 1028
+    },
+    {
+      "filename": "ic_sorrow_letter_send.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_letter_send.png",
+      "width": 930,
+      "height": 600,
+      "bytes": 54342
+    },
+    {
+      "filename": "ic_sorrow_msg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_msg.png",
+      "width": 54,
+      "height": 54,
+      "bytes": 1515
+    },
+    {
+      "filename": "ic_sorrow_msg2.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_msg2.png",
+      "width": 78,
+      "height": 78,
+      "bytes": 938
+    },
+    {
+      "filename": "ic_sorrow_rank.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_rank.png",
+      "width": 54,
+      "height": 54,
+      "bytes": 867
+    },
+    {
+      "filename": "ic_sorrow_rank_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_rank_bg.png",
+      "width": 210,
+      "height": 240,
+      "bytes": 1069
+    },
+    {
+      "filename": "ic_sorrow_sign.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_sign.png",
+      "width": 150,
+      "height": 150,
+      "bytes": 1138
+    },
+    {
+      "filename": "ic_sorrow_top0.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_top0.png",
+      "width": 51,
+      "height": 66,
+      "bytes": 1183
+    },
+    {
+      "filename": "ic_sorrow_top1.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_top1.png",
+      "width": 51,
+      "height": 66,
+      "bytes": 1141
+    },
+    {
+      "filename": "ic_sorrow_top2.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_top2.png",
+      "width": 51,
+      "height": 66,
+      "bytes": 1137
+    },
+    {
+      "filename": "ic_sorrow_vip_top_bg.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_vip_top_bg.png",
+      "width": 870,
+      "height": 570,
+      "bytes": 39419
+    },
+    {
+      "filename": "ic_sorrow_write_tip.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_write_tip.png",
+      "width": 930,
+      "height": 480,
+      "bytes": 45814
+    },
+    {
+      "filename": "ic_sorrow_xun.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_xun.png",
+      "width": 54,
+      "height": 54,
+      "bytes": 816
+    },
+    {
+      "filename": "ic_sorrow_yue.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_yue.png",
+      "width": 999,
+      "height": 974,
+      "bytes": 95107
+    },
+    {
+      "filename": "ic_sorrow_yun.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_sorrow_yun.png",
+      "width": 1620,
+      "height": 1691,
+      "bytes": 436048
+    },
+    {
+      "filename": "ic_star_view_0.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_star_view_0.png",
+      "width": 981,
+      "height": 750,
+      "bytes": 119929
+    },
+    {
+      "filename": "ic_star_view_1.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_star_view_1.png",
+      "width": 981,
+      "height": 750,
+      "bytes": 127144
+    },
+    {
+      "filename": "ic_star_view_2.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_star_view_2.png",
+      "width": 981,
+      "height": 750,
+      "bytes": 126240
+    },
+    {
+      "filename": "ic_star_view_3.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_star_view_3.png",
+      "width": 981,
+      "height": 750,
+      "bytes": 164128
+    },
+    {
+      "filename": "ic_suisui_app.png",
+      "apk_path": "res/drawable-xxhdpi-v4/ic_suisui_app.png",
+      "width": 120,
+      "height": 120,
+      "bytes": 2236
+    }
+  ]
+}

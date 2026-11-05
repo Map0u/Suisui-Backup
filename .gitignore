@@ -1,0 +1,16 @@
+# 本地测试与运行产物
+/screenshots/
+/smoke-shots/
+*.zip
+*.log
+
+# 环境配置与依赖
+node_modules/
+.env
+.env.*
+
+# Android 构建中间产物与签名密钥
+android-app/build/
+*.keystore
+*.jks
+android-app/jvm-test/*.class

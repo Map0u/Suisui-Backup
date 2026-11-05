@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#DBEBEE">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="岁岁">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./assets/icon/app_launcher_round.png">
+<link rel="icon" href="./assets/icon/app_launcher.png">
+<link rel="preload" as="image" href="./assets/ic_login_top_bg.png">
+<link rel="preload" as="image" href="./assets/ic_baobao.png">
+<link rel="preload" as="image" href="./assets/icon/logo_suisui_app.png">
+<title>岁岁 · 时光纪念馆</title>
+<link rel="stylesheet" href="./css/app.css?v=2026110507">
+</head>
+<body>
+<div id="app"></div>
+<script src="./js/zip-engine.js?v=2026110507"></script>
+<script src="./js/demo-data.js?v=2026110507"></script>
+<script src="./js/app.js?v=2026110507"></script>
+<script>
+if ('serviceWorker' in navigator && location.protocol !== 'file:' && location.hostname !== 'suisui.local' && !window.SuisuiNative) {
+  navigator.serviceWorker.register('./sw.js?v=2026110507').then(function (reg) { if (reg && reg.update) reg.update(); }).catch(function () {});
+}
+</script>
+</body>
+</html>

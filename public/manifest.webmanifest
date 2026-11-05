@@ -1,0 +1,15 @@
+{
+  "name": "岁岁·时光纪念馆",
+  "short_name": "岁岁",
+  "description": "不急不忙，岁岁安康 · 把散落的星球记忆带回家",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#BED7E8",
+  "theme_color": "#BED7E8",
+  "icons": [
+    { "src": "./assets/icon/app_launcher.png", "sizes": "576x576", "type": "image/png" },
+    { "src": "./assets/icon/app_launcher_round.png", "sizes": "576x576", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
