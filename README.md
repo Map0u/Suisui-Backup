@@ -1,10 +1,10 @@
-# 岁岁 · 时光纪念馆 (`suisui-backup`)
+# 岁岁 · 时光纪念馆 (`Suisui-Backup`)
 
 > **岁岁可以年年。**  
 > 在彻底说再见之前，把这里写过的字、拍过的照、录过的声音，原封不动带回家。
 
 - **在线纪念馆地址**：<https://岁岁年年.life>
-- **开源仓库地址**：<https://github.com/Map0u/suisui-backup>
+- **开源仓库地址**：<https://github.com/Map0u/Suisui-Backup>
 
 ---
 
@@ -37,7 +37,7 @@
 本项目服务端 100% 使用 Node.js 原生内置模块编写，**无需执行 `npm install` 安装任何第三方依赖**：
 
 1. 在电脑上安装 [Node.js](https://nodejs.org/)（建议 v18 及以上版本）。
-2. 点击本页面右上角绿色 `Code` -> `Download ZIP` 下载源码并解压（或执行 `git clone https://github.com/Map0u/suisui-backup.git`）。
+2. 点击本页面右上角绿色 `Code` -> `Download ZIP` 下载源码并解压（或执行 `git clone https://github.com/Map0u/Suisui-Backup.git`）。
 3. **启动服务**：
    - **Windows 电脑**：直接双击根目录下的 **`启动岁岁纪念馆.bat`**，会自动启动服务并打开浏览器 `http://127.0.0.1:3566`。
    - **macOS / Linux**：在终端进入本目录，运行 `bash start.sh`（或 `node server/index.js`），然后用浏览器打开 `http://127.0.0.1:3566`。
