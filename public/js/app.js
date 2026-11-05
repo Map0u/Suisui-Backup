@@ -45,9 +45,20 @@
   }
 
   function labelsOf(value) {
-    if (Array.isArray(value)) return value.map(function (x) { return String(x == null ? '' : x).trim(); }).filter(Boolean);
-    if (typeof value === 'string') return value.split(/[,，、|]/).map(function (s) { return s.trim(); }).filter(Boolean);
-    return [];
+    var out = [];
+    function push(s) {
+      s = String(s == null ? '' : s).trim();
+      /* 过滤岁岁上游空槽位串（@￥@@#@￥@@#@…）与仅含分隔符的无效项 */
+      if (!s || /^[@￥#\s]+$/.test(s)) return;
+      if (out.indexOf(s) < 0) out.push(s);
+    }
+    var items = Array.isArray(value) ? value : (typeof value === 'string' ? [value] : []);
+    items.forEach(function (item) {
+      if (item == null) return;
+      if (typeof item === 'object') item = item.name || item.label || item.title || item.text || '';
+      String(item).split(/@￥@|@#@|@￥|@#|;;|[,，、|]/).forEach(push);
+    });
+    return out;
   }
 
   function friendlyError(err) {
@@ -358,11 +369,11 @@
     p.followCount = Number(p.followCount || (p.stats && p.stats.follow) || 0);
     p.fansCount = Number(p.fansCount || (p.stats && p.stats.fans) || 0);
     p.visitCount = Number(p.visitCount || (p.stats && (p.stats.visitors || p.stats.visit)) || 0);
-    p.treeholeCount = Number(p.treeholeCount || 0);
+    p.treeholeCount = Number(p.treeholeCount || p.treehole_count || 0);
     p.homepageCover = resolveMediaUrl(p.homepageCover || '');
     p.profileFrame = resolveMediaUrl(p.profileFrame || '');
     p.profileMusic = resolveMediaUrl(p.profileMusic || '');
-    p.labels = labelsOf(p.labels || p.label || '');
+    p.labels = labelsOf(p.labels || p.label || p.tags || p.userLabels || p.labelNames || '');
     p.isGuardian = p.isGuardian === true || p.isGuardian === 1 || p.isGuardian === '1';
     p.betterThanPercent = Number(p.betterThanPercent || 0) || 0;
     if (p.signReport && typeof p.signReport === 'object') p.signReport = p.signReport;
@@ -1916,10 +1927,9 @@
         (p.labels && p.labels.length ? '<div class="mine-labels">' + p.labels.map(function (lb) { return '<span class="label-pill">' + esc(lb) + '</span>'; }).join('') + '</div>' : '') +
         (p.betterThanPercent ? '<p class="mine-better">比 ' + esc(p.betterThanPercent) + '% 的岁友更常把心事安放在这里</p>' : '') +
         '<div class="mine-sub-tags">' +
-          '<span>属地：' + esc(p.region) + '</span>' +
-          '<span>·</span>' +
-          '<span>' + esc(p.restaurantName) + '</span>' +
-          (p.joinTime ? '<span>· 注册于 ' + esc(p.joinTime.slice(0, 10)) + '</span>' : '') +
+          '<span class="mine-sub-tag">属地：' + esc(p.region) + '</span>' +
+          '<span class="mine-sub-tag">' + esc(p.restaurantName) + '</span>' +
+          (p.joinTime ? '<span class="mine-sub-tag">注册于 ' + esc(p.joinTime.slice(0, 10)) + '</span>' : '') +
         '</div>' +
         '<div class="mine-stats-bar">' +
           '<button class="mine-stat-btn' + (S.mineTab === 'follow' ? ' active' : '') + '" data-mtab="follow" type="button">' +
@@ -1932,7 +1942,7 @@
             '<b>' + (p.visitCount || visitors.length) + '</b><span>访客</span>' +
           '</button>' +
           '<button class="mine-stat-btn" id="mine-go-tree" type="button">' +
-            '<b>' + array(d.tree).length + '</b><span>树洞</span>' +
+            '<b>' + Math.max(Number(p.treeholeCount || 0), array(d.tree).length) + '</b><span>树洞</span>' +
           '</button>' +
         '</div>' +
       '</div>';
@@ -1945,7 +1955,7 @@
       '<button class="mine-shortcut-item" data-jump="sorrow-future" type="button"><img src="' + A + 'mine/ic_mine_future.png" alt=""><span>未来信件</span></button>' +
       '<button class="mine-shortcut-item" data-jump="fm" type="button"><img src="' + A + 'mine/ic_mine_wish.png" alt=""><span>心愿与电台</span></button>' +
       '<button class="mine-shortcut-item" data-jump="privacy" type="button"><img src="' + A + 'mine/ic_mine_safe.png" alt=""><span>安全说明</span></button>' +
-      '<button class="mine-shortcut-item" data-jump="accounts" type="button"><img src="' + A + 'mine/ic_user_head_ni.png" alt=""><span>切换账号</span></button>';
+      '<button class="mine-shortcut-item" data-jump="accounts" type="button"><img src="' + A + 'mine/ic_mine_set.png" alt=""><span>切换账号</span></button>';
     stage.appendChild(shortcuts);
 
     var peopleCard = el('section', 'mine-people-card');
@@ -2302,7 +2312,7 @@
           var speed = samples.reduce(function (sum, item) { return sum + item.bytes; }, 0) / elapsed / 1048576;
           S.exportPct = 8 + Math.round(completed / Math.max(1, refs.length) * 80);
           S.exportProgressTitle = '正在收录照片与语音 (' + completed + ' / ' + refs.length + ')';
-          S.exportProgressSub = '已下载 ' + (totalDownloadedBytes / 1048576).toFixed(1) + ' MB · 速度 ' + speed.toFixed(1) + ' MB/s（自动重试保障中）';
+          S.exportProgressSub = '已下载 ' + (totalDownloadedBytes / 1048576).toFixed(1) + ' MB · 速度 ' + speed.toFixed(1) + ' MB/s';
           updateExportProgressDOM();
         }
       }

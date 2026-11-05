@@ -387,13 +387,20 @@ function cleanTime(t) {
 }
 
 function labelsOf(value) {
-  if (Array.isArray(value)) {
-    return value.map(function (x) { return String(x == null ? '' : x).trim(); }).filter(Boolean);
+  var out = [];
+  function push(s) {
+    s = String(s == null ? '' : s).trim();
+    /* 过滤岁岁上游空槽位串（@￥@@#@￥@@#@…）与仅含分隔符的无效项 */
+    if (!s || /^[@￥#\s]+$/.test(s)) return;
+    if (out.indexOf(s) < 0) out.push(s);
   }
-  if (typeof value === 'string') {
-    return value.split(/[,，、|]/).map(function (s) { return s.trim(); }).filter(Boolean);
-  }
-  return [];
+  var items = Array.isArray(value) ? value : (typeof value === 'string' ? [value] : []);
+  items.forEach(function (item) {
+    if (item == null) return;
+    if (typeof item === 'object') item = item.name || item.label || item.title || item.text || '';
+    String(item).split(/@￥@|@#@|@￥|@#|;;|[,，、|]/).forEach(push);
+  });
+  return out;
 }
 
 function firstNum(obj, keys) {
