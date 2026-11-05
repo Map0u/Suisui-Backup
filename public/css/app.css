@@ -95,6 +95,9 @@ img {
   background: linear-gradient(135deg, #F39B6D 0%, #EF6418 100%);
   box-shadow: 0 6px 16px rgba(239, 100, 24, 0.25);
 }
+.btn-export-primary {
+  white-space: nowrap;
+}
 .btn-teal {
   color: #fff;
   background: linear-gradient(135deg, #6EC1B6 0%, #4D9E93 100%);
@@ -403,7 +406,7 @@ img {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid rgba(71, 74, 77, 0.08);
-  padding: calc(8px + env(safe-area-inset-top, 0px)) 14px 8px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;
 }
 .backup-topbar-inner {
   max-width: 680px;

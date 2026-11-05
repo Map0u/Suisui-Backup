@@ -7,6 +7,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Base64;
+import android.view.DisplayCutout;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowInsets;
@@ -18,6 +19,7 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
 import android.widget.Toast;
 
 import java.io.ByteArrayInputStream;
@@ -69,15 +71,30 @@ public class MainActivity extends Activity {
         webView.setBackgroundColor(Color.parseColor("#DBEBEE"));
         applyWebSettings(webView.getSettings());
         webView.setWebViewClient(new LocalClient());
-        webView.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+        webView.addJavascriptInterface(new SuisuiNative(), "SuisuiNative");
+
+        final FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Color.parseColor("#DBEBEE"));
+        root.setFitsSystemWindows(true);
+        root.addView(webView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+        root.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
             @Override
             public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
-                v.setPadding(0, insets.getSystemWindowInsetTop(), 0, insets.getSystemWindowInsetBottom());
-                return insets;
+                int topInset = insets.getSystemWindowInsetTop();
+                if (Build.VERSION.SDK_INT >= 28) {
+                    DisplayCutout cutout = insets.getDisplayCutout();
+                    if (cutout != null) {
+                        topInset = Math.max(topInset, cutout.getSafeInsetTop());
+                    }
+                }
+                int bottomInset = insets.getSystemWindowInsetBottom();
+                v.setPadding(0, topInset, 0, bottomInset);
+                return insets.consumeSystemWindowInsets();
             }
         });
-        webView.addJavascriptInterface(new SuisuiNative(), "SuisuiNative");
-        setContentView(webView);
+        setContentView(root);
         applyStatusBar();
         ArchiveImporter.recoverInterruptedSwap(getFilesDir());
         webView.loadUrl(ORIGIN + "index.html");
@@ -91,9 +108,7 @@ public class MainActivity extends Activity {
         window.setStatusBarColor(mist);
         window.setNavigationBarColor(mist);
         View decor = window.getDecorView();
-        int vis = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+        int vis = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
         if (Build.VERSION.SDK_INT >= 26) {
             vis |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
         }

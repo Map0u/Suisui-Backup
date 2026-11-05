@@ -979,6 +979,7 @@
     var c = counts(d);
     var isPureOffline = Boolean(S.isLocalArchive && !S.pull && !S.token);
     var pull = S.pull;
+    var syncing = syncStillGoing();
     var pct = pullPercent();
     var activeMod = pull && pull.active ? PULL_MODULES.filter(function (m) { return m.key === pull.active; })[0] : null;
 
@@ -1050,13 +1051,13 @@
         rightBtnsHTML += '<button class="btn btn-soft" id="btn-pause-pull" type="button">暂停</button>';
       }
     }
-    if (S.nativeShell) {
-      rightBtnsHTML += '<button class="btn btn-soft" id="btn-switch-account" type="button">切换本地备份包</button>';
+    if (S.nativeShell && !syncing) {
+      rightBtnsHTML += '<button class="btn btn-soft" id="btn-switch-account" type="button">切换备份包</button>';
     } else if (isPureOffline) {
       rightBtnsHTML += '<button class="btn btn-soft" id="btn-switch-account" type="button">切换备份包</button>';
     }
-    rightBtnsHTML += '<button class="btn btn-primary" id="btn-export-all" type="button"' + (S.exporting || syncStillGoing() ? ' disabled' : '') + '>' +
-      (S.exporting ? '正在整理…' : (syncStillGoing() ? '正在整理回忆中，请稍候…' : '保存全部岁岁回忆')) +
+    rightBtnsHTML += '<button class="btn btn-primary btn-export-primary" id="btn-export-all" type="button"' + (S.exporting || syncing ? ' disabled' : '') + '>' +
+      (S.exporting ? '正在整理…' : (syncing ? '整理回忆中…' : '保存全部岁岁回忆')) +
     '</button>';
 
     topbar.innerHTML = '<div class="backup-topbar-inner">' +
