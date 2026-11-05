@@ -616,12 +616,14 @@ async function fetchTreeComments(treeHoleId, auth) {
 
   async function requestWithOneRetry(route) {
     var lastErr;
-    for (var attempt = 0; attempt < 2; attempt++) {
+    for (var attempt = 0; attempt < 3; attempt++) {
       try {
-        return await upstream('GET', route, null, auth);
+        var result = await upstream('GET', route, null, auth);
+        if (!successful(result)) throw new Error('评论上游请求失败');
+        return result;
       } catch (err) {
         lastErr = err;
-        if (attempt === 0) await new Promise(function (resolve) { setTimeout(resolve, 180); });
+        if (attempt < 2) await new Promise(function (resolve) { setTimeout(resolve, 180 * (attempt + 1)); });
       }
     }
     throw lastErr;
@@ -653,7 +655,7 @@ async function fetchTreeComments(treeHoleId, auth) {
               formatted.subComments = merged;
               formatted.replyCount = Math.max(formatted.replyCount, merged.length, Number(rawComm.replyCount || 0));
             }
-          } catch (subErr) {}
+          } catch (subErr) { throw subErr; }
         }
         allComments.push(formatted);
       }
@@ -663,7 +665,7 @@ async function fetchTreeComments(treeHoleId, auth) {
       if (!more || !lastId || lastId === String(cursor)) break;
       cursor = lastId;
     } catch (e) {
-      break;
+      throw e;
     }
   }
   return allComments;
@@ -737,7 +739,7 @@ async function realPage(body) {
   }
 
   if (module === 'tree') {
-    var batchPages = Math.min(5, Math.max(1, Number(body.batchPages) || 3));
+    var batchPages = Math.min(2, Math.max(1, Number(body.batchPages) || 2));
     var allTreeItems = [];
     var cur = cursor;
     var hasMoreTree = false;
@@ -749,11 +751,14 @@ async function realPage(body) {
       hasMoreTree = pr.hasMore;
       if (!hasMoreTree || !cur) break;
     }
-    await Promise.all(allTreeItems.map(async function (item) {
-      if (item.commentsCount > 0 && item.id) {
-        item.comments = await fetchTreeComments(item.id, auth);
+    var nextTree = 0;
+    async function commentWorker() {
+      while (nextTree < allTreeItems.length) {
+        var item = allTreeItems[nextTree++];
+        if (item.commentsCount > 0 && item.id) item.comments = await fetchTreeComments(item.id, auth);
       }
-    }));
+    }
+    await Promise.all(Array.from({ length: Math.min(5, allTreeItems.length) }, commentWorker));
     return { ok: true, items: allTreeItems, nextCursor: hasMoreTree ? cur : '', hasMore: !!hasMoreTree, rawCount: allTreeItems.length };
   }
 
@@ -1020,7 +1025,7 @@ function mediaProxy(req, res, targetUrl, redirectsLeft, lease) {
       var headSent = false;
       var completed = false;
       var outHeaders = Object.assign({}, SECURITY_HEADERS, {
-        'Content-Type': ur.headers['content-type'] || 'application/octet-stream',
+        'Content-Type': (/^audio\/x-wav(?:\s*;|$)/i.test(ur.headers['content-type'] || '') || /\.wav$/i.test(u.pathname)) ? 'audio/wav' : (ur.headers['content-type'] || 'application/octet-stream'),
         'Cache-Control': 'private, max-age=3600',
         'Accept-Ranges': ur.headers['accept-ranges'] || 'bytes'
       });

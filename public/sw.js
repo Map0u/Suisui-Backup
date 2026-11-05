@@ -1,11 +1,11 @@
 /* 岁岁·时光纪念馆 Service Worker — 网络优先 + 离线回退 */
-var CACHE = 'suisui-shell-v8';
+var CACHE = 'suisui-shell-v9';
 var SHELL = [
   './index.html',
-  './css/app.css?v=2026110508',
-  './js/zip-engine.js?v=2026110508',
-  './js/demo-data.js?v=2026110508',
-  './js/app.js?v=2026110508',
+  './css/app.css?v=2026110601',
+  './js/zip-engine.js?v=2026110601',
+  './js/demo-data.js?v=2026110601',
+  './js/app.js?v=2026110601',
   './manifest.webmanifest',
   './assets/manifest.json'
 ];

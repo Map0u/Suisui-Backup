@@ -28,10 +28,10 @@
     if (!s || s === 'null' || s === 'undefined' || s === ';empty;') return '';
     if (/^(https?:|blob:|data:)/i.test(s)) return s;
     if (/^\.\/(assets|media|archive)\//i.test(s)) s = s.slice(2);
-    if (/^\/archive\//i.test(s) || /^\/download\//i.test(s) || /^\/api\//i.test(s)) return s;
+    if (/^\/archives?\//i.test(s) || /^\/download\//i.test(s) || /^\/api\//i.test(s)) return s;
     if (/^\/assets\//i.test(s)) return s.slice(1);
     if (/^(assets\/|media\/)/i.test(s)) {
-      if (isNativeShell() && /^media\//i.test(s)) return '/archive/' + s;
+      if (isNativeShell() && /^media\//i.test(s)) return '/archives/' + encodeURIComponent(S.accountKey || 'default') + '/' + s;
       return s;
     }
     return '/api/media-proxy?path=' + encodeURIComponent(s.replace(/^\/+/, ''));
@@ -40,7 +40,7 @@
   function safeMediaURL(value) {
     var s = resolveMediaUrl(value);
     if (!s) return '';
-    if (/^(https?:|blob:|data:)/i.test(s) || /^(\/api\/|\/archive\/|\/download\/|assets\/|media\/)/i.test(s)) return s;
+    if (/^(https?:|blob:|data:)/i.test(s) || /^(\/api\/|\/archives?\/|\/download\/|assets\/|media\/)/i.test(s)) return s;
     return '';
   }
 
@@ -173,8 +173,17 @@
     }
   }
 
-  function safeFetchJson(url, opts) {
-    opts = opts || {};
+  function safeFetchJson(url, opts, timeoutMs) {
+    opts = Object.assign({}, opts || {});
+    var controller = new AbortController();
+    var originalSignal = opts.signal;
+    var abort = function () { controller.abort(); };
+    if (originalSignal) {
+      if (originalSignal.aborted) abort();
+      else originalSignal.addEventListener('abort', abort, { once: true });
+    }
+    opts.signal = controller.signal;
+    var timer = setTimeout(abort, timeoutMs == null ? 28000 : timeoutMs);
     if (isNativeShell() && opts.body && String(opts.method || '').toUpperCase() === 'POST') {
       opts.headers = opts.headers || {};
       var rawBody = typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body);
@@ -191,10 +200,16 @@
           throw new Error('网络开小差了，请稍后再试');
         }
         if (!response.ok || data.ok === false) {
-          throw new Error(friendlyError(data.msg || '网络开小差了，请稍后再试'));
+          var err = new Error(friendlyError(data.msg || '网络开小差了，请稍后再试'));
+          err.status = response.status;
+          err.retryable = response.status >= 500 || (response.ok && /网络|超时|上游/.test(String(data.msg || '')));
+          throw err;
         }
         return data;
       });
+    }).finally(function () {
+      clearTimeout(timer);
+      if (originalSignal) originalSignal.removeEventListener('abort', abort);
     });
   }
 
@@ -207,6 +222,7 @@
     userBean: null,
     zipReader: null,
     mediaCache: {},
+    mediaInflight: {},
     pull: null,
     activeTab: 'tree',
     sorrowTab: 'inbox',
@@ -228,6 +244,7 @@
       try { URL.revokeObjectURL(S.mediaCache[k]); } catch (e) {}
     });
     S.mediaCache = {};
+    S.mediaInflight = {};
     if (S.lastZipBlobUrl) {
       try { URL.revokeObjectURL(S.lastZipBlobUrl); } catch (e) {}
       S.lastZipBlobUrl = '';
@@ -400,10 +417,16 @@
     if (/^(https?:|blob:|data:)/i.test(path)) return Promise.resolve(path);
     if (S.zipReader && S.zipReader.has(path)) {
       if (S.mediaCache[path]) return Promise.resolve(S.mediaCache[path]);
-      return S.zipReader.objectURL(path, mime).then(function (url) {
-        S.mediaCache[path] = url;
+      if (S.mediaInflight[path]) return S.mediaInflight[path];
+      var reader = S.zipReader, cache = S.mediaCache, pending = S.mediaInflight;
+      var suffix = path.split(/[?#]/)[0].toLowerCase().match(/\.([a-z0-9]+)$/);
+      var types = { wav: 'audio/wav', mp3: 'audio/mpeg', m4a: 'audio/mp4', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' };
+      pending[path] = reader.objectURL(path, (suffix && types[suffix[1]]) || mime).then(function (url) {
+        if (S.mediaCache !== cache || S.zipReader !== reader) { URL.revokeObjectURL(url); return ''; }
+        cache[path] = url;
         return url;
-      });
+      }).finally(function () { delete pending[path]; });
+      return pending[path];
     }
     return Promise.resolve(path);
   }
@@ -442,7 +465,37 @@
     });
   }
 
-  /* IndexedDB 断点续传（只存公开备份数据，不存密码与 token） */
+  /* 密码不保存；账号令牌和备份仅保存在本机 IndexedDB。 */
+  function legacyDB() {
+    return new Promise(function (resolve, reject) {
+      var request = indexedDB.open('suisui_rescue_db', 1);
+      request.onupgradeneeded = function () { if (!request.result.objectStoreNames.contains('checkpoints')) request.result.createObjectStore('checkpoints', { keyPath: 'id' }); };
+      request.onsuccess = function () { resolve(request.result); };
+      request.onerror = function () { reject(request.error); };
+    });
+  }
+  function mirrorLegacy(key, record, entry, remove) {
+    return legacyDB().then(function (db) { return new Promise(function (resolve, reject) {
+      var tx = db.transaction('checkpoints', 'readwrite'), store = tx.objectStore('checkpoints');
+      var r = store.get('accounts_index');
+      r.onsuccess = function () {
+        var entries = array(r.result && r.result.accounts).filter(function (item) { return item.key !== key; });
+        if (!remove) entries.unshift(entry);
+        store.put({ id: 'accounts_index', accounts: entries });
+      };
+      if (remove) {
+        store.delete('account_' + key);
+        var active = store.get('active');
+        active.onsuccess = function () { if (active.result && active.result.accountKey === key) store.delete('active'); };
+      } else {
+        store.put(Object.assign({}, record, { id: 'account_' + key, accountKey: key }));
+        store.put(Object.assign({}, record, { id: 'active', accountKey: key }));
+      }
+      tx.oncomplete = function () { db.close(); resolve(); };
+      tx.onerror = function () { db.close(); reject(tx.error); };
+      tx.onabort = function () { db.close(); reject(tx.error); };
+    }); });
+  }
   var IDB = {
     db: null,
     open: function () {
@@ -450,40 +503,50 @@
       if (self.db) return Promise.resolve(self.db);
       return new Promise(function (resolve, reject) {
         if (!window.indexedDB) { reject(new Error('这台设备暂时记不住上次的进度')); return; }
-        var request = indexedDB.open('suisui_rescue_db', 1);
-        request.onupgradeneeded = function () { request.result.createObjectStore('checkpoints', { keyPath: 'id' }); };
+        var request = indexedDB.open('suisui_backup_db', 1);
+        request.onupgradeneeded = function () { if (!request.result.objectStoreNames.contains('accounts')) request.result.createObjectStore('accounts'); };
         request.onsuccess = function () { self.db = request.result; resolve(self.db); };
         request.onerror = function () { reject(request.error || new Error('暂时没法接着上次的进度')); };
       });
     },
-    get: function () {
-      return this.open().then(function (db) {
-        return new Promise(function (resolve, reject) {
-          var r = db.transaction('checkpoints').objectStore('checkpoints').get('active');
-          r.onsuccess = function () { resolve(r.result || null); };
-          r.onerror = function () { reject(r.error); };
-        });
-      });
+    read: function (key) {
+      return this.open().then(function (db) { return new Promise(function (resolve, reject) {
+        var r = db.transaction('accounts').objectStore('accounts').get(key);
+        r.onsuccess = function () { resolve(r.result == null ? null : r.result); };
+        r.onerror = function () { reject(r.error); };
+      }); });
     },
-    put: function (value) {
-      return this.open().then(function (db) {
-        return new Promise(function (resolve, reject) {
-          var tx = db.transaction('checkpoints', 'readwrite');
-          tx.objectStore('checkpoints').put(value);
-          tx.oncomplete = resolve;
-          tx.onerror = function () { reject(tx.error); };
-        });
-      });
+    get: function () { return this.read('account_data_' + (S.accountKey || '')); },
+    put: function (cp) {
+      var key = String(S.accountKey || cp.uid || cp.phone || '');
+      if (!key) return Promise.resolve();
+      var d = cp.archive || emptyArchive(), c = counts(d), profile = d.profile || {};
+      var record = { archive: d, modules: cp.modules, token: S.token, uid: cp.uid || S.uid, phone: cp.phone || S.phone,
+        done: !!cp.complete, complete: !!cp.complete, count: cp.count || 0, demo: !!cp.demo, updatedAt: Date.now(), source: cp.source || 'login', file: cp.file || null };
+      var entry = { key: key, uid: record.uid, phone: record.phone, nickname: profile.nickname || '岁岁旅人', avatar: profile.avatar || '', treeCount: c.tree, commentCount: c.comments, done: record.done, updatedAt: record.updatedAt, source: record.source,
+        progress: cp.modules ? Math.round(PULL_MODULES.filter(function (m) { return cp.modules[m.key] && cp.modules[m.key].done; }).length / PULL_MODULES.length * 100) : 100 };
+      return this.open().then(function (db) { return new Promise(function (resolve, reject) {
+        var tx = db.transaction('accounts', 'readwrite'), store = tx.objectStore('accounts');
+        var r = store.get('accounts_index_v1');
+        r.onsuccess = function () {
+          var index = array(r.result).filter(function (x) { return x.key !== key; });
+          index.unshift(entry);
+          store.put(index, 'accounts_index_v1');
+          store.put(record, 'account_data_' + key);
+          store.put(key, 'active_account_key_v1');
+        };
+        tx.oncomplete = resolve; tx.onerror = function () { reject(tx.error); }; tx.onabort = function () { reject(tx.error); };
+      }); }).then(function () { return mirrorLegacy(key, record, entry, false); });
     },
-    remove: function () {
-      return this.open().then(function (db) {
-        return new Promise(function (resolve, reject) {
-          var tx = db.transaction('checkpoints', 'readwrite');
-          tx.objectStore('checkpoints').delete('active');
-          tx.oncomplete = resolve;
-          tx.onerror = function () { reject(tx.error); };
-        });
-      });
+    remove: function (key) {
+      return this.open().then(function (db) { return new Promise(function (resolve, reject) {
+        var tx = db.transaction('accounts', 'readwrite'), store = tx.objectStore('accounts'), r = store.get('accounts_index_v1');
+        r.onsuccess = function () { store.put(array(r.result).filter(function (x) { return x.key !== key; }), 'accounts_index_v1'); };
+        store.delete('account_data_' + key);
+        var active = store.get('active_account_key_v1');
+        active.onsuccess = function () { if (active.result === key) store.delete('active_account_key_v1'); };
+        tx.oncomplete = resolve; tx.onerror = function () { reject(tx.error); }; tx.onabort = function () { reject(tx.error); };
+      }); }).then(function () { return mirrorLegacy(key, null, null, true); });
     }
   };
 
@@ -603,25 +666,80 @@
     }
   }
 
+  async function migrateLegacyCheckpoint() {
+    if ((await IDB.read('accounts_index_v1')) !== null) return;
+    var legacy = await IDB.read('current_checkpoint_v2');
+    if (!legacy) {
+      legacy = await new Promise(function (resolve) {
+        var req = indexedDB.open('suisui_rescue_db', 1);
+        req.onupgradeneeded = function () { if (!req.result.objectStoreNames.contains('checkpoints')) req.result.createObjectStore('checkpoints', { keyPath: 'id' }); };
+        req.onerror = function () { resolve(null); };
+        req.onsuccess = function () {
+          var db = req.result, r = db.transaction('checkpoints').objectStore('checkpoints').get('active');
+          r.onsuccess = function () { var value = r.result; db.close(); resolve(value || null); };
+          r.onerror = function () { db.close(); resolve(null); };
+        };
+      });
+    }
+    if (legacy && legacy.archive && (legacy.uid || legacy.phone)) {
+      S.accountKey = accountKeyOf(legacy.archive, legacy);
+      await IDB.put(legacy);
+      S.accountKey = '';
+    }
+    var legacyIndex = await legacyDB().then(function (db) { return new Promise(function (resolve, reject) {
+      var r = db.transaction('checkpoints').objectStore('checkpoints').get('accounts_index');
+      r.onsuccess = function () { db.close(); resolve(r.result && r.result.accounts || []); };
+      r.onerror = function () { db.close(); reject(r.error); };
+    }); });
+    if (array(legacyIndex).length && !(await IDB.read('accounts_index_v1') || []).length) {
+      for (var i = 0; i < legacyIndex.length; i++) {
+        var entry = legacyIndex[i];
+        var record = await legacyDB().then(function (db) { return new Promise(function (resolve, reject) {
+          var r = db.transaction('checkpoints').objectStore('checkpoints').get('account_' + entry.key);
+          r.onsuccess = function () { db.close(); resolve(r.result); };
+          r.onerror = function () { db.close(); reject(r.error); };
+        }); });
+        if (record && record.archive) { S.accountKey = entry.key; await IDB.put(record); S.accountKey = ''; }
+      }
+    }
+  }
+
   function loadResumeBanner() {
-    IDB.get().then(function (cp) {
+    migrateLegacyCheckpoint().then(function () { return IDB.read('accounts_index_v1'); }).then(function (index) {
       var box = $('#resume-box');
-      if (!cp || cp.complete || !box) return;
-      box.innerHTML = '检测到上次还有未拉取完的回忆（已同步 ' + Number(cp.count || 0) + ' 条记录）。' +
-        '<div class="resume-actions">' +
-          '<button id="use-resume" type="button">继续上次进度</button>' +
-          '<button id="drop-resume" type="button">重新完整同步</button>' +
-        '</div>';
+      if (!box || !array(index).length) return;
       box.classList.remove('hidden');
-      $('#use-resume').onclick = function () {
-        box.dataset.resume = 'yes';
-        $('#login-phone').value = cp.phone || '';
-        $('#login-status').textContent = '请输入密码登录，将接着上次的进度继续整理';
-      };
-      $('#drop-resume').onclick = function () {
-        IDB.remove().then(function () { box.classList.add('hidden'); }).catch(function () {});
-      };
-    }).catch(function () {});
+      box.innerHTML = '<strong>已保存的岁岁账号</strong>' + index.map(function (a) {
+        var phone = String(a.phone || '').replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2');
+        return '<div class="saved-account"><img class="avatar-img" src="' + srcAttr(a.avatar, DEFAULT_AVATAR) + '" alt="">' +
+          '<div><b>' + esc(a.nickname || '岁岁旅人') + '</b><small>' + esc(phone) + ' · 树洞 ' + Number(a.treeCount || 0) + ' · 评论 ' + Number(a.commentCount || 0) + '</small>' +
+          '<small>' + (a.done ? '已完整保存' : '已同步 ' + Number(a.progress || 0) + '%，可继续') + '</small></div>' +
+          '<button type="button" data-enter-account="' + esc(a.key) + '">进入纪念馆</button><button type="button" data-remove-account="' + esc(a.key) + '">移除</button></div>';
+      }).join('');
+      $$('[data-enter-account]', box).forEach(function (btn) { btn.onclick = function () { enterSavedAccount(btn.getAttribute('data-enter-account')); }; });
+      $$('[data-remove-account]', box).forEach(function (btn) { btn.onclick = function () {
+        if (!confirm('仅移除这台设备上的账号缓存，确定继续吗？')) return;
+        IDB.remove(btn.getAttribute('data-remove-account')).then(function () { box.classList.add('hidden'); loadResumeBanner(); }).catch(function () { toast('移除失败，请重试'); });
+      }; });
+    }).catch(function () { toast('无法读取本地账号列表'); });
+  }
+
+  function enterSavedAccount(key) {
+    IDB.read('account_data_' + key).then(function (saved) {
+      if (!saved || !saved.archive) throw new Error('账号数据不存在');
+      revokeMediaCache();
+      S.accountKey = key; S.token = saved.token || ''; S.uid = saved.uid || ''; S.phone = saved.phone || '';
+      S.demo = !!saved.demo; S.userBean = saved.archive.profile || {}; S.zipReader = null;
+      if (saved.source === 'import' || saved.file) {
+        S.archive = archiveShape(saved.archive); S.pull = null; S.isLocalArchive = true; S.activeTab = 'tree';
+        if (saved.file) S.zipReader = new SuisuiZipReader(saved.file);
+        enterSuisuiApp();
+        if (saved.file && S.zipReader) S.zipReader.load().then(function () { bindMedia(); }).catch(function () { toast('账号数据已打开，但原备份包媒体暂时无法读取'); });
+      } else if (!saved.complete && !S.token) {
+        S.archive = archiveShape(saved.archive); S.pull = null; S.isLocalArchive = true; S.activeTab = 'tree'; enterSuisuiApp();
+        toast('已打开已保存的数据；继续同步请重新登录');
+      } else startPull(saved);
+    }).catch(function () { toast('无法打开本地账号，请重试'); });
   }
 
   function bindLoginEvents() {
@@ -682,10 +800,9 @@
         S.demo = false;
         S.userBean = data.userBean || {};
         S.zipReader = null;
+        S.accountKey = String(S.uid || phone);
         return IDB.get().catch(function () { return null; }).then(function (saved) {
-          var box = $('#resume-box');
-          var useResume = saved && !saved.complete && String(saved.phone) === phone && String(saved.uid) === S.uid && box && box.dataset.resume === 'yes';
-          startPull(useResume ? saved : null);
+          startPull(saved && String(saved.uid) === S.uid && String(saved.phone) === phone ? saved : null);
         });
       }).catch(function (err) {
         btn.disabled = false;
@@ -734,6 +851,11 @@
     };
   }
 
+  function accountKeyOf(archive, fallback) {
+    var profile = archive && archive.profile || {};
+    return String(profile.uid || profile.id || (fallback && (fallback.uid || fallback.phone)) || S.uid || S.phone || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
+  }
+
   function openArchiveFile(file) {
     if (!file) return;
     revokeMediaCache();
@@ -754,9 +876,12 @@
         return reader.readJSON('data/archive.json');
       }).then(function (data) {
         S.archive = archiveShape(data);
+        S.accountKey = accountKeyOf(S.archive);
         S.zipReader = reader;
         S.pull = null;
+        S.isLocalArchive = true;
         S.activeTab = 'tree';
+        IDB.put({ archive: S.archive, modules: {}, complete: true, source: 'import', file: file, uid: S.archive.profile.uid, phone: '' }).catch(function () {});
         enterSuisuiApp();
         toast('岁岁备份包已打开');
       }).catch(function () { toast('文件内容格式不正确，请选择岁岁备份包'); });
@@ -783,6 +908,7 @@
     if (S.userBean && S.userBean.nickname) {
       initArchive.profile = profileOf(S.userBean);
     }
+    S.accountKey = accountKeyOf(saved && saved.archive, saved);
     var cp = saved || {
       id: 'active',
       phone: S.phone,
@@ -854,7 +980,7 @@
     var cp = newCheckpoint(saved);
     S.archive = cp.archive;
     S.activeTab = 'tree';
-    S.pull = { cp: cp, active: '', running: false, paused: false, stopped: false, errorMsg: '' };
+    S.pull = { cp: cp, active: '', running: false, paused: false, stopped: false, errorMsg: '', retryCount: 0, startedAt: Date.now(), startCount: cp.count || 0, pendingTree: 0 };
     enterSuisuiApp();
     IDB.put(cp).catch(function () {});
     runPull();
@@ -866,46 +992,68 @@
     pull.running = true;
     pull.errorMsg = '';
     (async function () {
+      var delays = [1200, 2500, 5000, 8000, 12000];
       while (!pull.paused && !pull.stopped) {
         var mod = PULL_MODULES.filter(function (m) { return !pull.cp.modules[m.key].done; })[0];
         if (!mod) { pull.cp.complete = true; break; }
         pull.active = mod.key;
         refreshTopBackupBar();
+        var res;
         try {
           var state = pull.cp.modules[mod.key];
-          var res = await safeFetchJson('/api/suisui/pull_page', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              module: mod.key,
-              cursor: state.cursor,
-              pageNo: state.pageNo,
-              batchPages: 4,
-              token: S.token,
-              phone: S.phone,
-              uid: S.uid,
-              demo: S.demo
-            })
+          res = await safeFetchJson('/api/suisui/pull_page', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ module: mod.key, cursor: state.cursor, pageNo: state.pageNo,
+              batchPages: mod.key === 'tree' ? 2 : 4, token: S.token, phone: S.phone, uid: S.uid, demo: S.demo })
           });
-          applyPage(pull.cp, mod, res);
-          S.archive = pull.cp.archive;
-          await IDB.put(pull.cp);
-          refreshTopBackupBar();
-          renderCurrentStage();
         } catch (err) {
+          if (pull.stopped || pull.paused) break;
+          var retryable = err.retryable || err.name === 'AbortError' || err instanceof TypeError;
+          if (retryable && pull.retryCount < delays.length) {
+            var wait = delays[pull.retryCount++];
+            refreshTopBackupBar(true);
+            await new Promise(function (resolve) { setTimeout(resolve, wait); });
+            continue;
+          }
           pull.paused = true;
           pull.errorMsg = friendlyError(err.message || '网络开小差了，请稍后再试');
           refreshTopBackupBar();
+          break;
+        }
+        if (pull.stopped) break;
+        pull.retryCount = 0;
+        var added = applyPage(pull.cp, mod, res);
+        S.archive = pull.cp.archive;
+        try { await IDB.put(pull.cp); } catch (err) {
+          pull.paused = true; pull.errorMsg = '本地保存失败，请检查设备存储空间'; refreshTopBackupBar(); break;
+        }
+        if (pull.stopped) break;
+        refreshTopBackupBar(true);
+        if (mod.key === 'tree' && added && S.activeTab === 'tree') {
+          var stage = $('#suisui-stage');
+          if (stage && $('.tree-feed-list .empty-state', stage) && !hasPlayingAudio()) renderCurrentStage();
+          else { pull.pendingTree += added; showNewTreeNotice(); }
         }
       }
       pull.running = false;
       pull.active = '';
-      if (pull.cp.complete) {
-        IDB.put(pull.cp).catch(function () {});
-      }
+      if (pull.stopped) return;
       refreshTopBackupBar();
-      renderCurrentStage();
+      if (pull.cp.complete && !hasPlayingAudio()) renderCurrentStage();
     }());
+  }
+
+  function hasPlayingAudio() {
+    return $$('audio').some(function (audio) { return !audio.paused && !audio.ended; }) || !!(S.mineBgmAudio && !S.mineBgmAudio.paused);
+  }
+
+  function showNewTreeNotice() {
+    var feed = $('.tree-feed-list'), pull = S.pull;
+    if (!feed || !pull || !pull.pendingTree) return;
+    var btn = $('.new-tree-notice', feed);
+    if (!btn) { btn = el('button', 'new-tree-notice'); btn.type = 'button'; feed.appendChild(btn); }
+    btn.textContent = '已新拉取 ' + pull.pendingTree + ' 条记录，点击刷新查看';
+    btn.onclick = function () { pull.pendingTree = 0; renderCurrentStage(); };
   }
 
   function counts(d) {
@@ -972,10 +1120,10 @@
     return Math.round(done / PULL_MODULES.length * 100);
   }
 
-  function refreshTopBackupBar() {
+  function refreshTopBackupBar(lightweight) {
     var topbar = $('#backup-topbar');
     if (!topbar) return;
-    var d = archiveShape(S.archive || emptyArchive());
+    var d = S.archive || emptyArchive();
     var c = counts(d);
     var isPureOffline = Boolean(S.isLocalArchive && !S.pull && !S.token);
     var pull = S.pull;
@@ -996,10 +1144,19 @@
       subText = '已经整理好的回忆都还在，点右侧就能继续';
     } else if (pull && !pull.cp.complete) {
       titleText = '正在同步' + (activeMod ? '「' + activeMod.label + '」' : '岁岁数据') + ' (' + pct + '%)';
-      subText = '已同步树洞 ' + c.tree + ' 条 · 评论 ' + c.comments + ' 条 · 配图/语音 ' + (c.media + c.audio) + ' 个';
+      subText = pull.retryCount ? '网络波动，正在自动重试 (第 ' + pull.retryCount + '/5 次)…' :
+        '已拉取 ' + c.tree + ' 条树洞 · ' + c.comments + ' 条评论 · 约 ' + (((pull.cp.count || 0) - (pull.startCount || 0)) / Math.max(1, (Date.now() - pull.startedAt) / 1000)).toFixed(1) + ' 条/秒';
     } else {
       titleText = (d.profile.nickname || '岁友') + ' 的岁岁记忆已就绪';
       subText = '树洞 ' + c.tree + ' · 评论 ' + c.comments + ' · 配图 ' + c.media + ' · 语音 ' + c.audio + ' · 心情/日记 ' + (c.mood + c.diary);
+    }
+
+    if (lightweight && $('.backup-status-title', topbar)) {
+      $('.backup-status-title', topbar).textContent = titleText;
+      $('.backup-status-sub span', topbar).textContent = subText;
+      var line = $('.backup-progress-line i', topbar);
+      if (line) line.style.width = pct + '%';
+      return;
     }
 
     var drawerHTML = '';
@@ -1051,11 +1208,7 @@
         rightBtnsHTML += '<button class="btn btn-soft" id="btn-pause-pull" type="button">暂停</button>';
       }
     }
-    if (S.nativeShell && !syncing) {
-      rightBtnsHTML += '<button class="btn btn-soft" id="btn-switch-account" type="button">切换备份包</button>';
-    } else if (isPureOffline) {
-      rightBtnsHTML += '<button class="btn btn-soft" id="btn-switch-account" type="button">切换备份包</button>';
-    }
+    rightBtnsHTML += '<button class="btn btn-soft" id="btn-switch-account" type="button">切换账号</button>';
     rightBtnsHTML += '<button class="btn btn-primary btn-export-primary" id="btn-export-all" type="button"' + (S.exporting || syncing ? ' disabled' : '') + '>' +
       (S.exporting ? '正在整理…' : (syncing ? '整理回忆中…' : '保存全部岁岁回忆')) +
     '</button>';
@@ -1098,6 +1251,7 @@
     if (privBtn) privBtn.onclick = openNoticeModal;
     var switchBtn = $('#btn-switch-account', topbar);
     if (switchBtn) switchBtn.onclick = function () {
+      if (!S.nativeShell) { showAccountSwitcher(); return; }
       if (S.nativeShell) {
         startNativeImport();
         return;
@@ -1157,6 +1311,8 @@
   function renderCurrentStage() {
     var stage = $('#suisui-stage');
     if (!stage) return;
+    array(S.stageObservers).forEach(function (observer) { observer.disconnect(); });
+    S.stageObservers = [];
     stage.innerHTML = '';
     if (S.activeTab !== 'mine' && S.mineBgmAudio && !S.mineBgmAudio.paused) {
       try { S.mineBgmAudio.pause(); } catch (e) {}
@@ -1247,8 +1403,8 @@
       commentsSectionHTML = '<div class="tree-comments-section">' +
         '<div class="comments-visible-list">' + previewComments.map(renderCommentNode).join('') + '</div>' +
         (hiddenComments.length > 0
-          ? '<div class="comments-extra-list hidden">' + hiddenComments.map(renderCommentNode).join('') + '</div>' +
-            '<button class="comments-more-btn" type="button">查看全部 ' + totalCommCount + ' 条评论与回复</button>'
+          ? '<div class="comments-extra-list hidden"></div>' +
+            '<button class="comments-more-btn" type="button">展开全部 ' + totalCommCount + ' 条评论与楼中楼</button>'
           : '') +
       '</div>';
     }
@@ -1287,14 +1443,41 @@
       '</div>' +
       commentsSectionHTML;
 
+    var voice = $('.tree-voice-bar', card);
+    if (voice) {
+      var audio = $('audio', voice), dur = $('.voice-dur', voice);
+      function updateVoice() {
+        voice.classList.toggle('playing', !audio.paused && !audio.ended);
+        var total = isFinite(audio.duration) ? Math.floor(audio.duration) : Number(item.audioSecond || 0);
+        dur.textContent = (!audio.paused ? Math.floor(audio.currentTime) + '" / ' : '') + (total ? total + '"' : '语音');
+      }
+      voice.onclick = function (event) {
+        if (event.target === audio || audio.contains(event.target)) return;
+        if (audio.paused) { var promise = audio.play(); if (promise && promise.catch) promise.catch(function () { toast('语音暂时无法播放，请重试'); }); }
+        else audio.pause();
+      };
+      audio.addEventListener('play', function () {
+        $$('audio').forEach(function (other) { if (other !== audio) other.pause(); });
+        if (S.mineBgmAudio && S.mineBgmAudio !== audio) S.mineBgmAudio.pause();
+        updateVoice();
+      });
+      ['pause', 'ended', 'timeupdate', 'loadedmetadata'].forEach(function (name) { audio.addEventListener(name, updateVoice); });
+      audio.addEventListener('error', function () { voice.classList.remove('playing'); toast('语音加载失败，请检查网络或原文件'); });
+    }
+
     var moreBtn = $('.comments-more-btn', card);
     if (moreBtn) {
       moreBtn.onclick = function () {
         var extra = $('.comments-extra-list', card);
         if (!extra) return;
+        if (!extra.dataset.loaded) {
+          extra.innerHTML = hiddenComments.map(renderCommentNode).join('');
+          extra.dataset.loaded = '1';
+          bindMedia(extra);
+          bindLightbox(extra);
+        }
         var isHidden = extra.classList.toggle('hidden');
-        moreBtn.textContent = isHidden ? ('查看全部 ' + totalCommCount + ' 条评论与回复') : '收起评论';
-        bindMedia(extra);
+        moreBtn.textContent = isHidden ? ('展开全部 ' + totalCommCount + ' 条评论与楼中楼') : '收起评论';
       };
     }
 
@@ -1307,8 +1490,32 @@
     return card;
   }
 
+  function appendPaged(container, items, makeNode, label) {
+    var cursor = 0, observer;
+    var button = el('button', 'load-more-records');
+    button.type = 'button';
+    container.appendChild(button);
+    function next() {
+      if (!container.isConnected) { if (observer) observer.disconnect(); return; }
+      var end = Math.min(cursor + 30, items.length), fragment = document.createDocumentFragment();
+      while (cursor < end) fragment.appendChild(makeNode(items[cursor++]));
+      bindMedia(fragment);
+      container.insertBefore(fragment, button);
+      var left = items.length - cursor;
+      if (!left) { if (observer) observer.disconnect(); button.remove(); }
+      else button.textContent = '加载更多' + label + '（剩余 ' + left + ' 条）';
+    }
+    button.onclick = next;
+    next();
+    if (cursor < items.length && window.IntersectionObserver) {
+      observer = new IntersectionObserver(function (entries) { if (entries[0].isIntersecting) next(); }, { rootMargin: '250px' });
+      observer.observe(button);
+      (S.stageObservers || (S.stageObservers = [])).push(observer);
+    }
+  }
+
   function renderTreeTab(stage) {
-    var d = archiveShape(S.archive || emptyArchive());
+    var d = S.archive || emptyArchive();
     var c = counts(d);
     var banner = el('section', 'tree-planet-banner');
     banner.innerHTML =
@@ -1327,15 +1534,14 @@
     stage.appendChild(banner);
 
     var feed = el('div', 'tree-feed-list');
-    var treeList = array(d.tree);
+    stage.appendChild(feed);
+    var treeList = array(d.tree).slice();
     if (!treeList.length) {
       feed.innerHTML = '<div class="empty-state"><img src="' + A + 'empty/empty_star.png" alt=""><div>' + (S.pull && !S.pull.cp.complete ? '正在同步你的树洞记录…' : '暂无树洞记录') + '</div></div>';
     } else {
-      treeList.forEach(function (item) {
-        feed.appendChild(buildTreeCard(item));
-      });
+      appendPaged(feed, treeList, buildTreeCard, '树洞');
     }
-    stage.appendChild(feed);
+    if (S.pull) { S.pull.pendingTree = 0; }
   }
 
   /* ==================== Tab 2：原版解忧馆与不晚邮局 ==================== */
@@ -1572,22 +1778,22 @@
   }
 
   function renderInteractTab(stage) {
-    var d = archiveShape(S.archive || emptyArchive());
+    var d = S.archive || emptyArchive();
     var fmList = array(d.fm);
     var friends = array(d.friends);
 
     var people = el('section', 'interact-friends-card');
     people.innerHTML = '<h3>我的岁友 (' + friends.length + ')</h3>';
+    stage.appendChild(people);
     if (!friends.length) {
       people.insertAdjacentHTML('beforeend', '<div class="empty-state" style="padding:12px"><img src="' + A + 'empty/empty_search.png" alt=""><div>还没有岁友记录</div></div>');
     } else {
-      friends.forEach(function (person) {
+      appendPaged(people, friends.slice(), function (person) {
         var row = el('div', 'person-item-row');
         row.innerHTML = personRowHTML(person, friendSourceLabel(person));
-        people.appendChild(row);
-      });
+        return row;
+      }, '岁友');
     }
-    stage.appendChild(people);
 
     var banner = el('section', 'fm-banner-card');
     banner.innerHTML =
@@ -1599,10 +1805,11 @@
     stage.appendChild(banner);
 
     var trackWrap = el('div');
+    stage.appendChild(trackWrap);
     if (!fmList.length) {
       trackWrap.innerHTML = '<div class="empty-state" style="padding:24px 16px"><img src="' + A + 'empty/empty_song.png" alt=""><div>暂无个人电台与心愿记录</div></div>';
     } else {
-      fmList.forEach(function (f) {
+      appendPaged(trackWrap, fmList.slice(), function (f) {
         var card = el('article', 'fm-track-card');
         card.innerHTML =
           '<img src="' + srcAttr(f.cover || (A + 'fm/fm_music.png')) + '" data-media="' + srcAttr(f.cover || (A + 'fm/fm_music.png')) + '" alt="">' +
@@ -1611,10 +1818,9 @@
             '<small>' + esc(f.owner || f.nickname || '') + (f.duration || f.audioSecond ? ' · ' + esc(f.duration || (f.audioSecond + 's')) : '') + '</small>' +
             ((f.audio || f.src) ? '<audio controls playsinline preload="metadata" style="width:100%;height:30px;margin-top:6px" src="' + srcAttr(f.audio || f.src) + '" data-media="' + srcAttr(f.audio || f.src) + '"></audio>' : '') +
           '</div>';
-        trackWrap.appendChild(card);
-      });
+        return card;
+      }, '电台与心愿');
     }
-    stage.appendChild(trackWrap);
 
     var wall = el('section', 'starlight-wall-card');
     wall.innerHTML =
@@ -1749,7 +1955,8 @@
       '<button class="mine-shortcut-item" data-jump="mood-diaries" type="button"><img src="' + A + 'mine/ic_mine_daily.png" alt=""><span>我的日记</span></button>' +
       '<button class="mine-shortcut-item" data-jump="sorrow-future" type="button"><img src="' + A + 'mine/ic_mine_future.png" alt=""><span>未来信件</span></button>' +
       '<button class="mine-shortcut-item" data-jump="fm" type="button"><img src="' + A + 'mine/ic_mine_wish.png" alt=""><span>心愿与电台</span></button>' +
-      '<button class="mine-shortcut-item" data-jump="privacy" type="button"><img src="' + A + 'mine/ic_mine_safe.png" alt=""><span>安全说明</span></button>';
+      '<button class="mine-shortcut-item" data-jump="privacy" type="button"><img src="' + A + 'mine/ic_mine_safe.png" alt=""><span>安全说明</span></button>' +
+      '<button class="mine-shortcut-item" data-jump="accounts" type="button"><img src="' + A + 'mine/ic_user_head_ni.png" alt=""><span>切换账号</span></button>';
     stage.appendChild(shortcuts);
 
     var peopleCard = el('section', 'mine-people-card');
@@ -1795,6 +2002,7 @@
         else if (j === 'sorrow-future') { S.activeTab = 'sorrow'; S.sorrowTab = 'future'; renderBottomNav(); renderCurrentStage(); }
         else if (j === 'fm') { S.activeTab = 'fm'; renderBottomNav(); renderCurrentStage(); }
         else if (j === 'privacy') { openNoticeModal(); }
+        else if (j === 'accounts') { showAccountSwitcher(); }
       };
     });
   }
@@ -1937,21 +2145,31 @@
     return refs;
   }
 
-  function fetchMedia(ref, retried) {
+  function fetchMedia(ref, attempt) {
+    attempt = attempt || 0;
     if (S.zipReader && S.zipReader.has(ref.url)) {
       return S.zipReader.readBytes(ref.url).then(function (bytes) {
         return { bytes: bytes, ext: extension(ref.url, '') };
       }).catch(function () { return null; });
     }
-    return fetch(ref.url).then(function (res) {
-      if (!res.ok) throw new Error('网络开小差了，请稍后再试');
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, 20000);
+    return fetch(ref.url, { signal: controller.signal }).then(function (res) {
+      if (!res.ok) throw new Error('媒体下载失败');
       return res.arrayBuffer().then(function (buf) {
         return { bytes: new Uint8Array(buf), ext: extension(ref.url, res.headers.get('Content-Type')) };
       });
     }).catch(function () {
-      if (!retried) return fetchMedia(ref, true);
-      return null;
-    });
+      if (attempt >= 3) return null;
+      return new Promise(function (resolve) { setTimeout(resolve, [500, 1500, 3000][attempt]); }).then(function () { return fetchMedia(ref, attempt + 1); });
+    }).finally(function () { clearTimeout(timer); });
+  }
+
+  function updateExportProgressDOM() {
+    var title = $('.backup-status-title'), sub = $('.backup-status-sub span'), line = $('.backup-progress-line i');
+    if (title) title.textContent = S.exportProgressTitle || '';
+    if (sub) sub.textContent = S.exportProgressSub || '';
+    if (line) line.style.width = (S.exportPct || 0) + '%';
   }
 
   function syncStillGoing() {
@@ -2072,30 +2290,36 @@
       var refs = collectMediaRefs(archive);
       var urlMap = {};
       var failedUrls = [];
-      var completed = 0;
+      var completed = 0, totalDownloadedBytes = 0, samples = [], nextRef = 0;
       var queue = refs.slice();
 
       async function mediaWorker() {
-        while (queue.length) {
-          var ref = queue.shift();
+        while (nextRef < queue.length) {
+          var ref = queue[nextRef++];
           var res = await fetchMedia(ref);
           completed += 1;
           if (res && res.bytes) {
+            totalDownloadedBytes += res.bytes.byteLength;
+            samples.push({ at: Date.now(), bytes: res.bytes.byteLength });
+            var cutoff = Date.now() - 3000;
+            while (samples.length && samples[0].at < cutoff) samples.shift();
             var path = 'media/' + String(ref.kind).replace(/[^a-z0-9_-]/gi, 'media') + '_' + ref.index + '.' + res.ext;
             writer.add(path, res.bytes);
             urlMap[ref.url] = path;
           } else {
             failedUrls.push(ref.url);
           }
+          var elapsed = Math.max(0.001, (Date.now() - (samples[0] ? samples[0].at : Date.now())) / 1000);
+          var speed = samples.reduce(function (sum, item) { return sum + item.bytes; }, 0) / elapsed / 1048576;
           S.exportPct = 8 + Math.round(completed / Math.max(1, refs.length) * 80);
-          S.exportProgressTitle = '正在收录照片与语音 (' + completed + '/' + refs.length + ')';
-          S.exportProgressSub = '正在为你装订岁岁纪念册…';
-          refreshTopBackupBar();
+          S.exportProgressTitle = '正在收录照片与语音 (' + completed + ' / ' + refs.length + ')';
+          S.exportProgressSub = '已下载 ' + (totalDownloadedBytes / 1048576).toFixed(1) + ' MB · 速度 ' + speed.toFixed(1) + ' MB/s（自动重试保障中）';
+          updateExportProgressDOM();
         }
       }
 
       var workers = [];
-      for (var w = 0; w < 12; w++) workers.push(mediaWorker());
+      for (var w = 0; w < 6; w++) workers.push(mediaWorker());
       await Promise.all(workers);
 
       S.exportPct = 92;
@@ -2110,6 +2334,9 @@
       writer.add('data/archive.json', JSON.stringify(exportData));
       writer.add('manifest.json', JSON.stringify({
         version: 2,
+        accountKey: accountKeyOf(archive),
+        uid: String(archive.profile.uid || S.uid || ''),
+        nickname: archive.profile.nickname || '',
         generatedAt: new Date().toISOString(),
         totalMedia: refs.length,
         savedMedia: refs.length - failedUrls.length,
@@ -2165,6 +2392,19 @@
     S.demo = false;
     S.activeTab = 'tree';
     enterSuisuiApp();
+  }
+
+  function nativeArchiveList() {
+    if (!window.SuisuiNative || typeof window.SuisuiNative.listNativeArchives !== 'function') return [];
+    try {
+      var parsed = JSON.parse(window.SuisuiNative.listNativeArchives() || '[]');
+      return array(parsed).map(function (item) { return typeof item === 'string' ? { accountKey: item } : item; });
+    } catch (e) { return []; }
+  }
+
+  function switchNativeArchive(key) {
+    if (!window.SuisuiNative || typeof window.SuisuiNative.switchNativeArchive !== 'function') return false;
+    try { return window.SuisuiNative.switchNativeArchive(key) === true; } catch (e) { return false; }
   }
 
   function loadNativeArchive() {
@@ -2243,6 +2483,35 @@
     }
     return false;
   };
+
+  function showAccountSwitcher() {
+    var mask = el('div', 'modal-mask');
+    mask.innerHTML = '<article class="modal-card account-switch-card"><button class="close-btn" aria-label="关闭">×</button><h2>切换账号</h2><div id="account-switch-list">正在读取账号…</div></article>';
+    mask.onclick = function (event) { if (event.target === mask || event.target.closest('.close-btn')) mask.remove(); };
+    document.body.appendChild(mask);
+    Promise.all([IDB.read('accounts_index_v1').catch(function () { return []; }), Promise.resolve(nativeArchiveList())]).then(function (parts) {
+      var map = {};
+      array(parts[0]).concat(parts[1]).forEach(function (item) {
+        var key = item.key || item.accountKey;
+        if (key) map[key] = Object.assign({}, map[key], item, { key: key });
+      });
+      var accounts = Object.keys(map).map(function (key) { return map[key]; });
+      var box = $('#account-switch-list', mask);
+      box.innerHTML = accounts.length ? accounts.map(function (item) {
+        return '<button class="saved-account" data-switch-account="' + esc(item.key) + '" type="button"><div><b>' + esc(item.nickname || item.key) + '</b><small>树洞 ' + Number(item.treeCount || 0) + '</small></div><span>' + (item.key === S.accountKey ? '当前' : '进入') + '</span></button>';
+      }).join('') : '<p>还没有其他已保存账号</p>';
+      $$('[data-switch-account]', box).forEach(function (btn) {
+        btn.onclick = function () {
+          var key = btn.getAttribute('data-switch-account');
+          mask.remove();
+          if (S.nativeShell && switchNativeArchive(key)) {
+            S.accountKey = key;
+            loadNativeArchive().catch(function () { enterSavedAccount(key); });
+          } else enterSavedAccount(key);
+        };
+      });
+    }).catch(function () { $('#account-switch-list', mask).textContent = '账号列表读取失败'; });
+  }
 
   function boot() {
     S.nativeShell = isNativeShell();

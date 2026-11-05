@@ -59,11 +59,19 @@ public class MainActivity extends Activity {
     private File pendingSaveZipFile;
     private String pendingSaveFilename;
     private FileOutputStream saveZipOutputStream;
+    private long saveZipExpectedBytes;
+    private long saveZipWrittenBytes;
+    private boolean saveZipFailed;
     private final Object saveZipLock = new Object();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        File[] cached = getCacheDir().listFiles();
+        if (cached != null) for (File file : cached) {
+            String name = file.getName();
+            if (file.isFile() && name.startsWith("pending_export_") && name.endsWith(".zip")) file.delete();
+        }
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         applyStatusBar();
 
@@ -96,7 +104,7 @@ public class MainActivity extends Activity {
         });
         setContentView(root);
         applyStatusBar();
-        ArchiveImporter.recoverInterruptedSwap(getFilesDir());
+        ArchiveImporter.recoverAccounts(getFilesDir());
         webView.loadUrl(ORIGIN + "index.html");
     }
 
@@ -322,7 +330,7 @@ public class MainActivity extends Activity {
             if (!isLocal(uri)) return null;
             String path = uri.getPath();
             if (path == null) path = "/";
-            if (path.startsWith("/archive/") || "/archive".equals(path)) {
+            if (path.startsWith("/archive/") || "/archive".equals(path) || path.startsWith("/archives/")) {
                 return serveArchive(path, header(request, "Range"));
             }
             if (path.startsWith("/api/")) {
@@ -338,7 +346,7 @@ public class MainActivity extends Activity {
             Uri uri = Uri.parse(url);
             if (!isLocal(uri)) return null;
             String path = uri.getPath() == null ? "/" : uri.getPath();
-            if (path.startsWith("/archive/") || "/archive".equals(path)) return serveArchive(path, null);
+            if (path.startsWith("/archive/") || "/archive".equals(path) || path.startsWith("/archives/")) return serveArchive(path, null);
             if (path.startsWith("/api/")) return proxyApiCompat(uri, path);
             return serveAsset(path);
         }
@@ -408,22 +416,17 @@ public class MainActivity extends Activity {
             outHeaders.put("Access-Control-Allow-Origin", "*");
 
             String contentType = conn.getContentType();
-            String mime = "application/json";
-            String encoding = "utf-8";
-            if (contentType != null) {
-                String[] parts = contentType.split(";");
-                if (parts.length > 0) mime = parts[0].trim();
-                for (int i = 1; i < parts.length; i++) {
-                    String p = parts[i].trim();
-                    if (p.toLowerCase(Locale.US).startsWith("charset=")) {
-                        encoding = p.substring(8).trim();
-                    }
-                }
-            }
+            String mime = proxyMime(contentType);
+            String encoding = proxyEncoding(contentType, mime);
             for (Map.Entry<String, List<String>> e : conn.getHeaderFields().entrySet()) {
                 String k = e.getKey();
                 if (k != null && e.getValue() != null && !e.getValue().isEmpty()) {
-                    outHeaders.put(k, e.getValue().get(0));
+                    String value = e.getValue().get(0);
+                    if ("Content-Type".equalsIgnoreCase(k) && value != null
+                            && value.toLowerCase(Locale.US).startsWith("audio/x-wav")) {
+                        value = "audio/wav" + value.substring("audio/x-wav".length());
+                    }
+                    outHeaders.put(k, value);
                 }
             }
             return new WebResourceResponse(mime, encoding, code, reason, outHeaders, in);
@@ -454,29 +457,45 @@ public class MainActivity extends Activity {
             Map<String, String> outHeaders = new HashMap<String, String>();
             outHeaders.put("Access-Control-Allow-Origin", "*");
             String contentType = conn.getContentType();
-            String mime = "application/json";
-            String encoding = "utf-8";
-            if (contentType != null) {
-                String[] parts = contentType.split(";");
-                if (parts.length > 0) mime = parts[0].trim();
-            }
+            String mime = proxyMime(contentType);
+            String encoding = proxyEncoding(contentType, mime);
             return new WebResourceResponse(mime, encoding, code, reason != null ? reason : "OK", outHeaders, in);
         } catch (IOException e) {
             return notFound();
         }
     }
 
+    private static String proxyMime(String contentType) {
+        String mime = contentType == null ? "application/octet-stream" : contentType.split(";", 2)[0].trim().toLowerCase(Locale.US);
+        if (mime.length() == 0) mime = "application/octet-stream";
+        return "audio/x-wav".equals(mime) ? "audio/wav" : mime;
+    }
+
+    private static String proxyEncoding(String contentType, String mime) {
+        if (mime.startsWith("audio/") || mime.startsWith("image/") || mime.startsWith("video/")
+                || "application/octet-stream".equals(mime)) return null;
+        if ("application/json".equals(mime) || mime.startsWith("text/")) return "utf-8";
+        if (contentType != null) {
+            String[] parts = contentType.split(";");
+            for (int i = 1; i < parts.length; i++) {
+                if (parts[i].trim().toLowerCase(Locale.US).matches("charset\\s*=.*")) return "utf-8";
+            }
+        }
+        return null;
+    }
+
     private WebResourceResponse serveArchive(String path, String rangeHeader) {
         String sub = path.startsWith("/archive/") ? path.substring("/archive/".length()) : "";
         File file;
         try {
-            File archiveRoot = new File(getFilesDir(), "archive");
-            file = new File(archiveRoot, sub);
-            String rootCanon = archiveRoot.getCanonicalPath();
-            String canon = file.getCanonicalPath();
-            if (!canon.startsWith(rootCanon)) return notFound();
-            if (!canon.equals(rootCanon) && !canon.startsWith(rootCanon + File.separator)) return notFound();
-            file = ArchiveImporter.resolveArchiveFile(getFilesDir(), sub);
+            if (path.startsWith("/archives/")) {
+                String rest = path.substring("/archives/".length());
+                int slash = rest.indexOf('/');
+                if (slash <= 0) return notFound();
+                file = ArchiveImporter.resolveAccountFile(getFilesDir(), rest.substring(0, slash), rest.substring(slash + 1));
+            } else {
+                file = ArchiveImporter.resolveArchiveFile(getFilesDir(), sub);
+            }
         } catch (IOException e) {
             return notFound();
         }
@@ -590,30 +609,41 @@ public class MainActivity extends Activity {
         return out.toString();
     }
 
+    private static String jsonString(String value) {
+        StringBuilder out = new StringBuilder("\"");
+        if (value != null) for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c == '"' || c == '\\') out.append('\\').append(c);
+            else if (c < 32) out.append(String.format(Locale.US, "\\u%04x", (int) c));
+            else out.append(c);
+        }
+        return out.append('"').toString();
+    }
+
     private void clearArchiveDir() {
-        ArchiveImporter.deleteTree(new File(getFilesDir(), "archive"));
-        ArchiveImporter.deleteTree(new File(getFilesDir(), "archive.tmp"));
-        ArchiveImporter.deleteTree(new File(getFilesDir(), "archive.bak"));
+        ArchiveImporter.clearActiveArchive(getFilesDir());
     }
 
     private void onZipReadyToSave(final File zipFile, final String filename) {
         if (zipFile == null || !zipFile.isFile() || zipFile.length() == 0) return;
 
-        // 若 archive/ 尚为空，顺手解压持久化进 App 的 getFilesDir()/archive/
-        final File archiveJson = new File(getFilesDir(), "archive/data/archive.json");
-        if (!archiveJson.isFile()) {
-            new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    ArchiveImporter.importZip(new ArchiveImporter.ZipSource() {
-                        @Override
-                        public InputStream open() throws IOException {
-                            return new FileInputStream(zipFile);
-                        }
-                    }, getFilesDir(), null);
-                }
-            }, "suisui-persist").start();
-        }
+        // 每次都更新对应账号；解压失败不影响用户保存完整 ZIP。
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final ArchiveImporter.Result result = ArchiveImporter.importZip(new ArchiveImporter.ZipSource() {
+                    @Override
+                    public InputStream open() throws IOException {
+                        return new FileInputStream(zipFile);
+                    }
+                }, getFilesDir(), null);
+                if (!result.ok) runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        Toast.makeText(MainActivity.this, "本地归档更新失败：" + result.error, Toast.LENGTH_LONG).show();
+                    }
+                });
+            }
+        }, "suisui-persist").start();
 
         runOnUiThread(new Runnable() {
             @Override
@@ -631,10 +661,53 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void notifySaveFailure() {
+        runOnUiThread(new Runnable() {
+            @Override public void run() {
+                Toast.makeText(MainActivity.this, "保存备份包失败，请重试", Toast.LENGTH_LONG).show();
+                if (webView != null) webView.evaluateJavascript(
+                        "window.onNativeSaveDone && window.onNativeSaveDone(false, '写入失败');", null);
+            }
+        });
+    }
+
     public final class SuisuiNative {
         @JavascriptInterface
         public boolean hasArchive() {
-            return new File(getFilesDir(), "archive/data/archive.json").isFile();
+            File root = ArchiveImporter.activeArchiveRoot(getFilesDir());
+            return root != null && new File(root, "data/archive.json").isFile();
+        }
+
+        @JavascriptInterface
+        public String listNativeArchives() {
+            String[] keys = ArchiveImporter.listArchives(getFilesDir());
+            StringBuilder json = new StringBuilder("[");
+            for (int i = 0; i < keys.length; i++) {
+                if (i > 0) json.append(',');
+                ArchiveImporter.ArchiveInfo info;
+                try {
+                    info = ArchiveImporter.archiveInfo(new File(getFilesDir(), "archives/" + keys[i]));
+                } catch (IOException e) {
+                    info = new ArchiveImporter.ArchiveInfo();
+                }
+                json.append("{\"accountKey\":").append(jsonString(keys[i]))
+                        .append(",\"uid\":").append(jsonString(info.uid))
+                        .append(",\"nickname\":").append(jsonString(info.nickname))
+                        .append(",\"avatar\":").append(jsonString(info.avatar))
+                        .append(",\"treeCount\":").append(info.treeCount).append('}');
+            }
+            return json.append(']').toString();
+        }
+
+        @JavascriptInterface
+        public void switchNativeArchive(String accountKey) {
+            if (!ArchiveImporter.switchArchive(getFilesDir(), accountKey)) {
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        Toast.makeText(MainActivity.this, "切换本地归档失败", Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
         }
 
         @JavascriptInterface
@@ -674,12 +747,8 @@ public class MainActivity extends Activity {
                         }
                         onZipReadyToSave(file, safeName);
                     } catch (Exception e) {
-                        runOnUiThread(new Runnable() {
-                            @Override
-                            public void run() {
-                                Toast.makeText(MainActivity.this, "保存备份包失败，请重试", Toast.LENGTH_SHORT).show();
-                            }
-                        });
+                        file.delete();
+                        notifySaveFailure();
                     }
                 }
             }, "suisui-write-zip").start();
@@ -689,15 +758,22 @@ public class MainActivity extends Activity {
         public void beginSaveZip(final String filename, final long totalBytes) {
             synchronized (saveZipLock) {
                 if (saveZipOutputStream != null) {
-                    try { saveZipOutputStream.close(); } catch (Exception ignored) {}
+                    try { saveZipOutputStream.close(); } catch (IOException ignored) { }
                     saveZipOutputStream = null;
+                    if (pendingSaveZipFile != null) pendingSaveZipFile.delete();
                 }
                 pendingSaveFilename = (filename == null || filename.length() == 0) ? "岁岁回忆备份.zip" : filename;
-                pendingSaveZipFile = new File(getCacheDir(), "pending_export_" + System.currentTimeMillis() + ".zip");
+                pendingSaveZipFile = null;
+                saveZipExpectedBytes = totalBytes;
+                saveZipWrittenBytes = 0;
+                saveZipFailed = totalBytes <= 0;
                 try {
-                    saveZipOutputStream = new FileOutputStream(pendingSaveZipFile);
+                    if (!saveZipFailed) {
+                        pendingSaveZipFile = File.createTempFile("pending_export_", ".zip", getCacheDir());
+                        saveZipOutputStream = new FileOutputStream(pendingSaveZipFile);
+                    }
                 } catch (IOException e) {
-                    pendingSaveZipFile = null;
+                    saveZipFailed = true;
                 }
             }
         }
@@ -706,29 +782,45 @@ public class MainActivity extends Activity {
         public void appendSaveZipChunk(final String base64Chunk) {
             if (base64Chunk == null || base64Chunk.length() == 0) return;
             synchronized (saveZipLock) {
-                if (saveZipOutputStream != null) {
+                if (!saveZipFailed && saveZipOutputStream != null) {
                     try {
                         byte[] bytes = Base64.decode(base64Chunk, Base64.DEFAULT);
-                        saveZipOutputStream.write(bytes);
-                    } catch (Exception ignored) {}
+                        if (bytes.length > saveZipExpectedBytes - saveZipWrittenBytes) {
+                            saveZipFailed = true;
+                        } else {
+                            saveZipOutputStream.write(bytes);
+                            saveZipWrittenBytes += bytes.length;
+                        }
+                    } catch (Exception e) {
+                        saveZipFailed = true;
+                    }
                 }
             }
         }
 
         @JavascriptInterface
         public void finishSaveZip() {
+            File file;
+            String filename;
+            boolean failed;
             synchronized (saveZipLock) {
-                if (saveZipOutputStream != null) {
-                    try {
-                        saveZipOutputStream.flush();
-                        saveZipOutputStream.close();
-                    } catch (Exception ignored) {}
+                if (saveZipOutputStream == null) saveZipFailed = true;
+                else {
+                    try { saveZipOutputStream.flush(); } catch (IOException e) { saveZipFailed = true; }
+                    try { saveZipOutputStream.close(); } catch (IOException e) { saveZipFailed = true; }
                     saveZipOutputStream = null;
                 }
+                file = pendingSaveZipFile;
+                filename = pendingSaveFilename;
+                failed = saveZipFailed || file == null || saveZipWrittenBytes != saveZipExpectedBytes
+                        || file.length() != saveZipExpectedBytes;
+                if (failed) {
+                    if (file != null) file.delete();
+                    pendingSaveZipFile = null;
+                }
             }
-            if (pendingSaveZipFile != null) {
-                onZipReadyToSave(pendingSaveZipFile, pendingSaveFilename);
-            }
+            if (failed) notifySaveFailure();
+            else onZipReadyToSave(file, filename);
         }
     }
 }

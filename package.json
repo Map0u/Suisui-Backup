@@ -1,6 +1,6 @@
 {
   "name": "suisui-backup",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "岁岁 · 时光纪念馆 — 个人历史数据全量备份与原版界面离线阅览工具",
   "main": "server/index.js",
   "scripts": {

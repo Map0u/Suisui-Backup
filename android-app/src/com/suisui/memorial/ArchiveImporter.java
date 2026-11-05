@@ -7,6 +7,14 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStreamReader;
+import java.io.BufferedReader;
+import java.io.PushbackReader;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -69,7 +77,21 @@ public final class ArchiveImporter {
             if (parts[i].length() == 0 || ".".equals(parts[i]) || "..".equals(parts[i])) return null;
             if (parts[i].indexOf(':') >= 0) return null;
         }
-        File archiveRoot = new File(filesDir, "archive");
+        File archiveRoot = activeArchiveRoot(filesDir);
+        return resolveFileInRoot(archiveRoot, rel);
+    }
+
+    public static File resolveAccountFile(File filesDir, String accountKey, String subPath) throws IOException {
+        if (filesDir == null || !validAccountKey(accountKey) || subPath == null) return null;
+        return resolveFileInRoot(new File(filesDir, "archives/" + accountKey), subPath);
+    }
+
+    private static File resolveFileInRoot(File archiveRoot, String rel) throws IOException {
+        if (archiveRoot == null || rel == null || rel.length() == 0 || rel.indexOf('\\') >= 0 || rel.indexOf('\0') >= 0) return null;
+        String[] parts = rel.split("/", -1);
+        for (String part : parts) {
+            if (part.length() == 0 || ".".equals(part) || "..".equals(part) || part.indexOf(':') >= 0) return null;
+        }
         File candidate = new File(archiveRoot, rel);
         String rootCanon = archiveRoot.getCanonicalPath();
         String canon = candidate.getCanonicalPath();
@@ -97,16 +119,283 @@ public final class ArchiveImporter {
         return new File(filesDir, "archive/data/archive.json").isFile();
     }
 
-    public static Result importZip(ZipSource source, File filesDir, Progress progress) {
+    private static boolean validAccountKey(String key) {
+        return key != null && key.matches("[A-Za-z0-9_-]{1,128}");
+    }
+
+    private static String readSmallFile(File file, int limit) throws IOException {
+        FileInputStream in = new FileInputStream(file);
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while (out.size() < limit && (n = in.read(buf, 0, Math.min(buf.length, limit - out.size()))) > 0) {
+                out.write(buf, 0, n);
+            }
+            return new String(out.toByteArray(), StandardCharsets.UTF_8);
+        } finally {
+            in.close();
+        }
+    }
+
+    private static String activeKey(File filesDir) {
+        try {
+            String key = readSmallFile(new File(filesDir, "active_account.txt"), 256).trim();
+            return validAccountKey(key) ? key : null;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    public static File activeArchiveRoot(File filesDir) {
+        if (filesDir == null) return null;
+        String key = activeKey(filesDir);
+        if (key != null) return new File(new File(filesDir, "archives"), key);
+        // 旧版数据在迁移失败时仍可读取，不要因升级而丢失访问能力。
+        File legacy = new File(filesDir, "archive");
+        return new File(legacy, "data/archive.json").isFile() ? legacy : null;
+    }
+
+    public static synchronized boolean switchArchive(File filesDir, String accountKey) {
+        if (filesDir == null || !validAccountKey(accountKey)
+                || !new File(filesDir, "archives/" + accountKey + "/data/archive.json").isFile()) return false;
+        File tmp = new File(filesDir, "active_account.txt.tmp");
+        try {
+            FileOutputStream out = new FileOutputStream(tmp);
+            try {
+                out.write(accountKey.getBytes(StandardCharsets.UTF_8));
+                out.getFD().sync();
+            } finally {
+                out.close();
+            }
+            if (!tmp.renameTo(new File(filesDir, "active_account.txt"))) throw new IOException("pointer rename");
+            return true;
+        } catch (IOException e) {
+            tmp.delete();
+            return false;
+        }
+    }
+
+    public static synchronized void clearActiveArchive(File filesDir) {
+        File root = activeArchiveRoot(filesDir);
+        if (root != null) deleteTree(root);
+        if (root == null || !root.exists()) new File(filesDir, "active_account.txt").delete();
+    }
+
+    public static synchronized String[] listArchives(File filesDir) {
+        File[] dirs = new File(filesDir, "archives").listFiles();
+        if (dirs == null) return new String[0];
+        java.util.ArrayList<String> keys = new java.util.ArrayList<String>();
+        for (File dir : dirs) {
+            if (validAccountKey(dir.getName()) && new File(dir, "data/archive.json").isFile()) keys.add(dir.getName());
+        }
+        String[] result = keys.toArray(new String[keys.size()]);
+        Arrays.sort(result);
+        return result;
+    }
+
+    // 恢复中断的逐账号替换，并尽量迁移旧版 archive/。
+    public static synchronized void recoverAccounts(File filesDir) {
+        recoverInterruptedSwap(filesDir);
+        File root = new File(filesDir, "archives");
+        if (!root.isDirectory() && !root.mkdirs()) return;
+        File[] entries = root.listFiles();
+        if (entries != null) for (File entry : entries) {
+            String name = entry.getName();
+            if (name.endsWith(".bak")) {
+                String key = name.substring(0, name.length() - 4);
+                if (!validAccountKey(key)) continue;
+                File target = new File(root, key);
+                if (!target.exists()) entry.renameTo(target);
+                else deleteTree(entry);
+            }
+        }
+        deleteTree(new File(root, ".import.tmp"));
+        File legacy = new File(filesDir, "archive");
+        if (new File(legacy, "data/archive.json").isFile()) {
+            try {
+                String key = archiveKey(legacy);
+                File target = new File(root, key);
+                if (!target.exists() && legacy.renameTo(target)) {
+                    if (activeKey(filesDir) == null && !switchArchive(filesDir, key)) target.renameTo(legacy);
+                }
+            } catch (IOException ignored) { }
+        }
+    }
+
+    public static final class ArchiveInfo {
+        public String accountKey = "";
+        public String uid = "";
+        public String nickname = "";
+        public String avatar = "";
+        public int treeCount;
+    }
+
+    // 只提取档案的资料及树洞数量，跳过其余值，避免将大型档案整体装入内存。
+    public static ArchiveInfo archiveInfo(File root) throws IOException {
+        ArchiveInfo info = new ArchiveInfo();
+        JsonScan json = new JsonScan(new File(root, "data/archive.json"));
+        try {
+            json.expect('{');
+            while (json.nextMember()) {
+                String key = json.string();
+                json.expect(':');
+                if ("profile".equals(key) && json.peek() == '{') {
+                    json.expect('{');
+                    while (json.nextMember()) {
+                        String field = json.string();
+                        json.expect(':');
+                        if ("uid".equals(field) || "id".equals(field) || "nickname".equals(field) || "avatar".equals(field)) {
+                            String value = json.scalar();
+                            if ("uid".equals(field)) info.uid = value;
+                            else if ("id".equals(field) && info.uid.length() == 0) info.uid = value;
+                            else if ("nickname".equals(field)) info.nickname = value;
+                            else if ("avatar".equals(field)) info.avatar = value;
+                        } else json.skip(0);
+                    }
+                } else if ("tree".equals(key) && json.peek() == '[') {
+                    json.expect('[');
+                    while (json.nextElement()) { json.skip(0); info.treeCount++; }
+                } else json.skip(0);
+            }
+        } finally { json.close(); }
+        return info;
+    }
+
+    private static final class JsonScan {
+        private final PushbackReader in;
+        JsonScan(File file) throws IOException {
+            in = new PushbackReader(new BufferedReader(new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8)), 2);
+        }
+        void close() throws IOException { in.close(); }
+        int next() throws IOException {
+            int c;
+            do { c = in.read(); } while (c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == 0xfeff);
+            return c;
+        }
+        int peek() throws IOException { int c = next(); if (c >= 0) in.unread(c); return c; }
+        void expect(int expected) throws IOException { if (next() != expected) throw new IOException("invalid JSON"); }
+        boolean nextMember() throws IOException {
+            int c = next();
+            if (c == '}') return false;
+            if (c == ',') c = next();
+            if (c != '"') throw new IOException("invalid object");
+            in.unread(c); return true;
+        }
+        boolean nextElement() throws IOException {
+            int c = next();
+            if (c == ']') return false;
+            if (c == ',') c = next();
+            if (c < 0) throw new IOException("invalid array");
+            in.unread(c); return true;
+        }
+        String string() throws IOException { return readString(true); }
+        String readString(boolean keep) throws IOException {
+            expect('"');
+            StringBuilder s = keep ? new StringBuilder() : null;
+            int c;
+            while ((c = in.read()) != '"') {
+                if (c < 0 || c < 32) throw new IOException("invalid string");
+                if (c == '\\') {
+                    c = in.read();
+                    if (c == 'u') {
+                        int value = 0;
+                        for (int i = 0; i < 4; i++) {
+                            int d = Character.digit(in.read(), 16);
+                            if (d < 0) throw new IOException("invalid escape");
+                            value = value * 16 + d;
+                        }
+                        c = value;
+                    } else if (c == 'n') c = '\n';
+                    else if (c == 'r') c = '\r';
+                    else if (c == 't') c = '\t';
+                    else if (c == 'b') c = '\b';
+                    else if (c == 'f') c = '\f';
+                    else if (c != '"' && c != '\\' && c != '/') throw new IOException("invalid escape");
+                }
+                if (keep) {
+                    if (s.length() >= 16384) throw new IOException("field too long");
+                    s.append((char) c);
+                }
+            }
+            return keep ? s.toString() : "";
+        }
+        String scalar() throws IOException {
+            if (peek() == '"') return string();
+            int c = peek();
+            if (c == '{' || c == '[') { skip(0); return ""; }
+            StringBuilder s = new StringBuilder();
+            while ((c = in.read()) >= 0 && c != ',' && c != '}' && c != ']' && !Character.isWhitespace(c)) {
+                if (s.length() < 256) s.append((char)c);
+            }
+            if (c >= 0) in.unread(c);
+            return "null".equals(s.toString()) ? "" : s.toString();
+        }
+        void skip(int depth) throws IOException {
+            if (depth > 128) throw new IOException("JSON too deep");
+            int c = peek();
+            if (c == '"') { readString(false); return; }
+            if (c == '{') {
+                expect('{');
+                while (nextMember()) { readString(false); expect(':'); skip(depth + 1); }
+            } else if (c == '[') {
+                expect('[');
+                while (nextElement()) skip(depth + 1);
+            } else {
+                if (c < 0) throw new IOException("unexpected end");
+                scalar();
+            }
+        }
+    }
+
+    private static String archiveKey(File root) throws IOException {
+        File manifest = new File(root, "manifest.json");
+        if (manifest.isFile()) {
+            JsonScan json = new JsonScan(manifest);
+            try {
+                json.expect('{');
+                while (json.nextMember()) {
+                    String field = json.string();
+                    json.expect(':');
+                    if ("accountKey".equals(field)) {
+                        String key = json.scalar().replaceAll("[^A-Za-z0-9_-]", "");
+                        if (validAccountKey(key)) return key;
+                    } else json.skip(0);
+                }
+            } catch (IOException ignored) {
+                // 老版本 manifest 不合法时仍可从 archive.json 推断账号。
+            } finally { json.close(); }
+        }
+        ArchiveInfo info = archiveInfo(root);
+        String profileKey = info.uid.replaceAll("[^A-Za-z0-9_-]", "");
+        if (validAccountKey(profileKey)) return profileKey;
+        // 旧备份没有账号标识：用完整 JSON 的摘要区分，绝不把不同账号压到一个目录。
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            FileInputStream in = new FileInputStream(new File(root, "data/archive.json"));
+            try {
+                byte[] buf = new byte[65536];
+                int n;
+                while ((n = in.read(buf)) != -1) digest.update(buf, 0, n);
+            } finally { in.close(); }
+            StringBuilder key = new StringBuilder("legacy_");
+            for (byte b : digest.digest()) key.append(String.format(java.util.Locale.US, "%02x", b & 0xff));
+            return key.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IOException(e);
+        }
+    }
+
+    public static synchronized Result importZip(ZipSource source, File filesDir, Progress progress) {
         if (source == null || filesDir == null) {
             return new Result(false, "无法打开所选文件", 0, 0, false);
         }
         if (!filesDir.isDirectory() && !filesDir.mkdirs()) {
             return new Result(false, "无法创建本地目录", 0, 0, false);
         }
-        File tmp = new File(filesDir, "archive.tmp");
-        File archive = new File(filesDir, "archive");
-        File bak = new File(filesDir, "archive.bak");
+        File root = new File(filesDir, "archives");
+        if (!root.isDirectory() && !root.mkdirs()) return new Result(false, "无法创建本地归档目录", 0, 0, false);
+        File tmp = new File(root, ".import.tmp");
         try {
             deleteTree(tmp);
             if (!tmp.mkdirs()) return new Result(false, "无法准备导入目录", 0, 0, false);
@@ -116,17 +405,30 @@ public final class ArchiveImporter {
                 deleteTree(tmp);
                 return new Result(false, invalid, extracted.count, extracted.mediaCount, extracted.hasArchiveJson);
             }
-            deleteTree(bak);
-            if (archive.exists()) {
-                if (!archive.renameTo(bak)) {
-                    deleteTree(tmp);
-                    return new Result(false, "无法替换已有纪念馆数据", extracted.count, extracted.mediaCount, true);
+            String key = archiveKey(tmp);
+            File archive = new File(root, key);
+            File bak = new File(root, key + ".bak");
+            if (bak.exists()) {
+                if (!archive.exists()) {
+                    if (!bak.renameTo(archive)) throw new IOException("restore archive");
+                } else {
+                    deleteTree(bak);
+                    if (bak.exists()) throw new IOException("remove old backup");
                 }
+            }
+            if (archive.exists() && !archive.renameTo(bak)) {
+                deleteTree(tmp);
+                return new Result(false, "无法替换已有纪念馆数据", extracted.count, extracted.mediaCount, true);
             }
             if (!tmp.renameTo(archive)) {
                 if (bak.exists() && !archive.exists()) bak.renameTo(archive);
                 deleteTree(tmp);
                 return new Result(false, "导入完成但无法写入纪念馆目录", extracted.count, extracted.mediaCount, true);
+            }
+            if (!switchArchive(filesDir, key)) {
+                deleteTree(archive);
+                if (bak.exists() && !archive.exists()) bak.renameTo(archive);
+                return new Result(false, "无法切换本地纪念馆", extracted.count, extracted.mediaCount, true);
             }
             deleteTree(bak);
             if (progress != null) progress.onProgress(100, extracted.count);
