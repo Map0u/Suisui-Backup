@@ -1,0 +1,26 @@
+ok: baseline: index vol import should succeed, got: 
+ok: baseline: media vol merge after index should succeed, got: 
+ok: baseline: media/img_1.png missing in archives/u_test_01
+ok: baseline: media/voice_1.wav missing in archives/u_test_01
+ok: baseline: archive.json must survive media vol merge
+FAIL: R3a: media-first import should be accepted (stage media), got: 请先导入索引卷（含纪念馆数据的那一卷），再导入媒体卷
+ok: R3a: index vol after media should succeed, got: 
+FAIL: R3a: archives/u_test_01/media/img_1.png must equal PNG_BYTES_1
+FAIL: R3a: archives/u_test_01/media/voice_1.wav must equal WAV_BYTES
+ok: R3a: archive.json must land in archives/u_test_01/data/
+ok: R3b: first index import failed
+ok: R3b: media merge failed
+FAIL: R3b: re-importing same index vol should succeed, got: 无法切换本地纪念馆
+ok: R3b: media/img_1.png must survive index re-import
+ok: R3b: media/voice_1.wav must survive index re-import
+ok: R3b: archive.json must still contain 烛 after re-import
+ok: R3c: index import failed
+ok: R3c: cross-account media vol must be rejected, got ok=true
+ok: R3c: foreign media must not land in u_test_01 dir
+ok: R3c: foreign account dir must not be created
+ok: R3d: E1 index import failed
+ok: R3d: E1 media merge failed
+FAIL: R3d: E2 index import failed
+ok: R3d: E2 media merge failed
+FAIL: R3d: t2's images_1.jpg must be B bytes (later export wins), got: JPG_A
+FAILURES: 6

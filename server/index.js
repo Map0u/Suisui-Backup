@@ -170,7 +170,7 @@ function handleStarlight(req, res) {
 }
 
 /* ---------------- /api/suisui/* 转发层 ---------------- */
-function upstreamOnce(method, route, payload, auth) {
+function upstreamOnce(method, route, payload, auth, budgetMs) {
   var target = new URL(route, adapter.BASE_URL);
   if (target.origin !== new URL(adapter.BASE_URL).origin || target.pathname.indexOf('/treehole/') !== 0) {
     return Promise.reject(new Error('非法上游路径'));
@@ -186,7 +186,7 @@ function upstreamOnce(method, route, payload, auth) {
       method: method,
       headers: headers,
       agent: upstreamAgent,
-      timeout: 15000
+      timeout: budgetMs == null ? 15000 : Math.min(15000, Math.max(1000, budgetMs))
     }, function (response) {
       var chunks = [], size = 0;
       response.on('data', function (chunk) {
@@ -213,14 +213,18 @@ function upstreamOnce(method, route, payload, auth) {
   });
 }
 
-async function upstream(method, route, payload, auth) {
-  var lastErr;
+async function upstream(method, route, payload, auth, budgetMs) {
+  var lastErr, startedAt = Date.now();
+  var timeoutMs = budgetMs == null ? 15000 : Math.min(15000, Math.max(1000, budgetMs));
   for (var attempt = 0; attempt < 3; attempt++) {
     try {
-      return await upstreamOnce(method, route, payload, auth);
+      var onceBudget = budgetMs == null ? undefined : budgetMs - (Date.now() - startedAt);
+      return await upstreamOnce(method, route, payload, auth, onceBudget);
     } catch (err) {
       lastErr = err;
       if (attempt < 2) {
+        var remaining = budgetMs == null ? Infinity : budgetMs - (Date.now() - startedAt);
+        if (remaining < timeoutMs) throw lastErr;
         await new Promise(function (r) { setTimeout(r, 250 * (attempt + 1)); });
       }
     }
@@ -617,68 +621,54 @@ function formatCommentItem(c, token) {
   };
 }
 
-async function fetchTreeComments(treeHoleId, auth) {
-  var allComments = [];
-  var cursor = '';
-
-  async function requestWithOneRetry(route) {
-    var lastErr;
-    for (var attempt = 0; attempt < 3; attempt++) {
-      try {
-        var result = await upstream('GET', route, null, auth);
-        if (!successful(result)) throw new Error('评论上游请求失败');
-        return result;
-      } catch (err) {
-        lastErr = err;
-        if (attempt < 2) await new Promise(function (resolve) { setTimeout(resolve, 180 * (attempt + 1)); });
-      }
-    }
-    throw lastErr;
+async function fetchTreeCommentsPage(treeHoleId, cursor, budgetMs, auth) {
+  var startedAt = Date.now();
+  function localRemainingMs() {
+    return budgetMs == null ? undefined : budgetMs - (Date.now() - startedAt);
+  }
+  function checkBudget() {
+    if (budgetMs != null && localRemainingMs() <= 0) throw new Error('上游请求预算已用尽');
   }
 
-  for (var page = 0; page < 200; page++) {
-    try {
-      var r = await requestWithOneRetry('v1/treehole/comments/?treeHoleId=' + q(treeHoleId) + '&viewMinId=' + q(cursor));
-      if (!successful(r)) break;
-      var arr = findArray(r.data) || [];
-      if (!arr.length) break;
-      for (var i = 0; i < arr.length; i++) {
-        var rawComm = arr[i];
-        var formatted = formatCommentItem(rawComm, auth.token);
-        if (Number(rawComm.replyCount || 0) > formatted.subComments.length && formatted.id) {
-          try {
-            var subRes = await requestWithOneRetry('v1/treehole/comments/sub?treeHoleId=' + q(treeHoleId) + '&commentId=' + q(formatted.id));
-            if (successful(subRes)) {
-              var subArr = findArray(subRes.data) || [];
-              var merged = [];
-              var seen = Object.create(null);
-              formatted.subComments.concat(formatCommentItem(Object.assign({}, rawComm, { subComments: subArr }), auth.token).subComments).forEach(function (sub) {
-                var key = String(sub.id || '') || [sub.uid, sub.time, sub.content].join('|');
-                if (!seen[key]) {
-                  seen[key] = true;
-                  merged.push(sub);
-                }
-              });
-              formatted.subComments = merged;
-              formatted.replyCount = Math.max(formatted.replyCount, merged.length, Number(rawComm.replyCount || 0));
-            }
-          } catch (subErr) { throw subErr; }
-        }
-        allComments.push(formatted);
+  checkBudget();
+  var r = await upstream('GET', 'v1/treehole/comments/?treeHoleId=' + q(treeHoleId) + '&viewMinId=' + q(cursor), null, auth, localRemainingMs());
+  if (!successful(r)) throw new Error('评论上游请求失败');
+  var arr = findArray(r.data) || [];
+  var comments = [];
+  for (var i = 0; i < arr.length; i++) {
+    var rawComm = arr[i];
+    var formatted = formatCommentItem(rawComm, auth.token);
+    if (Number(rawComm.replyCount || 0) > formatted.subComments.length && formatted.id) {
+      checkBudget();
+      var subRes = await upstream('GET', 'v1/treehole/comments/sub?treeHoleId=' + q(treeHoleId) + '&commentId=' + q(formatted.id), null, auth, localRemainingMs());
+      if (successful(subRes)) {
+        var subArr = findArray(subRes.data) || [];
+        var merged = [];
+        var seen = Object.create(null);
+        formatted.subComments.concat(formatCommentItem(Object.assign({}, rawComm, { subComments: subArr }), auth.token).subComments).forEach(function (sub) {
+          var key = String(sub.id || '') || [sub.uid, sub.time, sub.content].join('|');
+          if (!seen[key]) {
+            seen[key] = true;
+            merged.push(sub);
+          }
+        });
+        formatted.subComments = merged;
+        formatted.replyCount = Math.max(formatted.replyCount, merged.length, Number(rawComm.replyCount || 0));
       }
-      var last = arr[arr.length - 1] || {};
-      var lastId = String(last.id || last.commentId || '');
-      var more = r.data && typeof r.data.hasMore === 'boolean' ? r.data.hasMore : arr.length > 0;
-      if (!more || !lastId || lastId === String(cursor)) break;
-      cursor = lastId;
-    } catch (e) {
-      throw e;
     }
+    comments.push(formatted);
   }
-  return allComments;
+  var last = arr[arr.length - 1] || {};
+  var nextCursor = String(last.id || last.commentId || '');
+  var hasMore = r.data && typeof r.data.hasMore === 'boolean' ? r.data.hasMore : arr.length > 0;
+  return { items: comments, nextCursor: nextCursor, hasMore: !!hasMore };
 }
 
 async function realPage(body) {
+  var t0 = Date.now();
+  var PULL_PAGE_BUDGET_MS = 20000;
+  function remainingMs() { return PULL_PAGE_BUDGET_MS - (Date.now() - t0); }
+
   var token = body.token || '';
   var auth = { token: token, phone: body.phone, deviceId: body.deviceId };
   var module = body.module;
@@ -687,7 +677,7 @@ async function realPage(body) {
   var uid = q(body.uid);
   if (!token) throw new Error('请先登录岁岁账号');
 
-  async function get(route) { return checked(await upstream('GET', route, null, auth)); }
+  async function get(route) { return checked(await upstream('GET', route, null, auth, remainingMs())); }
 
   if (module === 'profile') {
     getCosCred(token).catch(function () {});
@@ -731,7 +721,30 @@ async function realPage(body) {
     return { ok: true, profile: profile, items: [profile], nextCursor: '', hasMore: false };
   }
 
+  if (module === 'comments') {
+    var treeId = String(body.treeId || '').trim();
+    if (!treeId) throw new Error('缺少 treeId 参数');
+    var commCur = String(body.cursor || '');
+    var commItems = [];
+    var commHasMore = false;
+    while (remainingMs() > 0) {
+      var commPage = await fetchTreeCommentsPage(treeId, commCur, remainingMs(), auth);
+      commItems = commItems.concat(commPage.items);
+      commCur = commPage.nextCursor;
+      commHasMore = commPage.hasMore;
+      if (!commHasMore || !commCur) break;
+    }
+    return {
+      ok: true,
+      items: commItems,
+      nextCursor: commHasMore ? commCur : '',
+      hasMore: commHasMore,
+      treeId: treeId
+    };
+  }
+
   if (module === 'moods') {
+    if (remainingMs() <= 0) return { ok: true, items: [], nextCursor: String(page), hasMore: true, rawCount: 0 };
     var moodData = await get('v1/mood/sign/' + page + '/20');
     var arr = findArray(moodData);
     if (!arr) throw new Error('上游心情列表格式未知，已暂停以避免遗漏');
@@ -746,11 +759,12 @@ async function realPage(body) {
   }
 
   if (module === 'tree') {
-    var batchPages = Math.min(2, Math.max(1, Number(body.batchPages) || 2));
+    var batchPages = 1;
     var allTreeItems = [];
     var cur = cursor;
     var hasMoreTree = false;
     for (var b = 0; b < batchPages; b++) {
+      if (remainingMs() <= 0) break;
       var treeRaw = await get('v1/treehole/mine?viewMinId=' + q(cur));
       var pr = pageResult(treeRaw, 'tree', cur, 'tree', token);
       allTreeItems = allTreeItems.concat(pr.items);
@@ -758,15 +772,44 @@ async function realPage(body) {
       hasMoreTree = pr.hasMore;
       if (!hasMoreTree || !cur) break;
     }
-    var nextTree = 0;
-    async function commentWorker() {
-      while (nextTree < allTreeItems.length) {
-        var item = allTreeItems[nextTree++];
-        if (item.commentsCount > 0 && item.id) item.comments = await fetchTreeComments(item.id, auth);
+
+    var pendingComments = [];
+    for (var i = 0; i < allTreeItems.length; i++) {
+      var item = allTreeItems[i];
+      if (item.commentsCount > 0 && item.id) {
+        pendingComments.push({ treeId: String(item.id), commentsCursor: '' });
       }
     }
-    await Promise.all(Array.from({ length: Math.min(5, allTreeItems.length) }, commentWorker));
-    return { ok: true, items: allTreeItems, nextCursor: hasMoreTree ? cur : '', hasMore: !!hasMoreTree, rawCount: allTreeItems.length };
+
+    if (JSON.stringify({ items: allTreeItems }).length < 20480 && pendingComments.length <= 30) {
+      for (var j = 0; j < allTreeItems.length; j++) {
+        var treeItem = allTreeItems[j];
+        if (treeItem.commentsCount > 0 && treeItem.id) {
+          if (remainingMs() <= 0) break;
+          try {
+            var cPage = await fetchTreeCommentsPage(treeItem.id, '', remainingMs(), auth);
+            treeItem.comments = cPage.items;
+            if (!cPage.hasMore) {
+              pendingComments = pendingComments.filter(function (pc) { return pc.treeId !== String(treeItem.id); });
+            }
+          } catch (cErr) {
+            treeItem.commentsError = (cErr && cErr.message) || String(cErr);
+          }
+        }
+      }
+    }
+
+    var treeResp = {
+      ok: true,
+      items: allTreeItems,
+      nextCursor: hasMoreTree ? cur : '',
+      hasMore: !!hasMoreTree,
+      rawCount: allTreeItems.length
+    };
+    if (pendingComments.length > 0) {
+      treeResp.pendingComments = pendingComments;
+    }
+    return treeResp;
   }
 
   var routes = {
@@ -780,6 +823,10 @@ async function realPage(body) {
     var rCur = cursor;
     var rMore = false;
     for (var rb = 0; rb < routeBatch; rb++) {
+      if (remainingMs() <= 0) {
+        rMore = true;
+        break;
+      }
       var rPr = pageResult(await get(routes[module] + q(rCur)), module, rCur, module, token);
       routeItems = routeItems.concat(rPr.items);
       rCur = rPr.nextCursor;
@@ -794,9 +841,9 @@ async function realPage(body) {
     if (cursor) { try { state = JSON.parse(cursor); } catch (e) { throw new Error('无效的复合分页游标'); } }
     var specs = module === 'letters_future' ? [
       { key: 'future', fetch: function (c) { return get('v1/futureletter/?viewMinId=' + q(c)); } },
-      { key: 'past', fetch: function (c) { return get('v1/pastletter/?viewMinId=' + q(c)).catch(function () { return { items: [], hasMore: false }; }); } }
+      { key: 'past', fetch: function (c) { return get('v1/pastletter/?viewMinId=' + q(c)); } }
     ] : module === 'fm' ? [
-      { key: 'radio', fetch: function (_c, n) { return upstream('POST', 'v1/radio/myRadio', { uid: String(body.uid || ''), pageNum: String(n), pageSize: '20' }, auth).then(checked); }, numbered: true },
+      { key: 'radio', fetch: function (_c, n) { return upstream('POST', 'v1/radio/myRadio', { uid: String(body.uid || ''), pageNum: String(n), pageSize: '20' }, auth, remainingMs()).then(checked); }, numbered: true },
       { key: 'like', fetch: function (c) { return get('v1/radio/like?viewMinId=' + q(c)); } },
       { key: 'hope', fetch: function (c) { return get('v1/hope/mine?viewMinId=' + q(c)); } }
     ] : [
@@ -807,8 +854,10 @@ async function realPage(body) {
     var compBatch = Math.min(5, Math.max(1, Number(body.batchPages) || 4));
     var items = [];
     for (var cb = 0; cb < compBatch; cb++) {
+      if (remainingMs() <= 0) break;
       var anyMore = false;
       for (var i = 0; i < specs.length; i++) {
+        if (remainingMs() <= 0) break;
         var spec = specs[i], s = state[spec.key] || { cursor: '', page: 1, done: false };
         if (!s.done) {
           var result = await spec.fetch(s.cursor, s.page), list = findArray(result);
@@ -830,7 +879,7 @@ async function realPage(body) {
       }
       if (!anyMore) break;
     }
-    var hasMore = specs.some(function (spec) { return !state[spec.key].done; });
+    var hasMore = specs.some(function (spec) { return !state[spec.key] || !state[spec.key].done; });
     return { ok: true, items: items, nextCursor: hasMore ? JSON.stringify(state) : '', hasMore: hasMore, rawCount: items.length };
   }
   throw new Error('未知模块');
@@ -877,6 +926,9 @@ async function proxyUpstream(_req, res, routeName, body) {
     }
     if (routeName === 'pull_page') {
       return json(res, 200, demo ? demoPage(body) : await realPage(body));
+    }
+    if (routeName === 'comments') {
+      return json(res, 200, await realPage(Object.assign({}, body, { module: 'comments' })));
     }
     return json(res, 200, { ok: false, msg: '未知接口' });
   } catch (err) {

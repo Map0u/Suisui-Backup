@@ -1,0 +1,14 @@
+[server stderr] (node:38184) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+R1 tree pull_page 返回(0.8s): ok=true msg=undefined items=1 hasT1=true
+[PASS(绿)] R1 评论失败仍保住整页 (r.ok===true && items 含 t1) :: ok=true, items=["t1"], msg=undefined
+[server stderr] (node:47852) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+R1附 上游不回包：服务端 15.0s 后返回 {"ok":false,"msg":"网络开小差了，请稍后再试"}
+R1附 说明：服务端 upstream 超时 index.js:189 = 15000ms ×3 次 ≈ 45s 后才失败；网页 28s 先超时 → 客户端等不到也不该整页卡死（记录在案，非硬断言）。
+[server stderr] (node:48252) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+R2附 letters_future 返回(0.8s): ok=false hasMore=undefined items=[]
+[PASS(绿)] R2附 past 失败可见 (ok===false 或 hasMore===true 或 items 含 _source=past) :: ok=false, hasMore=undefined, sources=[]
+
+总结：全绿，修复到位（模式=expect-green）

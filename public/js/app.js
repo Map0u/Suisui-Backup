@@ -314,6 +314,37 @@
     });
   }
 
+  /* 评论去重键：优先 id；无 id 时用内容+时间+作者兜底，防旧数据重复计数。 */
+  function commentKey(c) {
+    if (!c) return '';
+    if (c.id != null && String(c.id) !== '') return 'id:' + String(c.id);
+    return 'raw:' + String(c.uid || '') + '|' + String(c.time || '') + '|' + String(c.content || '').slice(0, 32);
+  }
+
+  /* 评论并集合并：按 id 判重，楼中楼 subComments 递归并集；
+   * 只进不出——任何一边收到的评论都不会被另一边盖掉。 */
+  function dedupComments(existing, added) {
+    var list = array(existing).slice();
+    var seen = {};
+    list.forEach(function (c) { seen[commentKey(c)] = c; });
+    array(added).forEach(function (c) {
+      if (!c) return;
+      var k = commentKey(c);
+      var hit = k && seen[k];
+      if (!hit) {
+        var item = (c.subComments !== undefined || c.replies !== undefined)
+          ? c
+          : Object.assign({}, c, { subComments: dedupComments([], c.subComments || c.replies) });
+        if (!k) k = commentKey(item);
+        if (k) seen[k] = item;
+        list.push(item);
+        return;
+      }
+      hit.subComments = dedupComments(hit.subComments, c.subComments || c.replies);
+    });
+    return list;
+  }
+
   function moodName(key) {
     return { happy: '开心', unhappy: '不开心', tired: '疲惫', calm: '平静', angry: '生气', default: '日常心情' }[key] || key || '日常心情';
   }
@@ -551,8 +582,8 @@
       if (!key) return Promise.resolve();
       var d = cp.archive || emptyArchive(), c = counts(d), profile = d.profile || {};
       var record = { archive: d, modules: cp.modules, token: S.token, uid: cp.uid || S.uid, phone: cp.phone || S.phone,
-        done: !!cp.complete, complete: !!cp.complete, count: cp.count || 0, demo: !!cp.demo, updatedAt: Date.now(), source: cp.source || 'login', file: cp.file || null };
-      var entry = { key: key, uid: record.uid, phone: record.phone, nickname: profile.nickname || '岁岁旅人', avatar: profile.avatar || '', treeCount: c.tree, commentCount: c.comments, done: record.done, updatedAt: record.updatedAt, source: record.source,
+        done: !!cp.complete, complete: !!cp.complete, mediaPending: !!cp.mediaPending, count: cp.count || 0, demo: !!cp.demo, updatedAt: Date.now(), source: cp.source || 'login', file: cp.file || null };
+      var entry = { key: key, uid: record.uid, phone: record.phone, nickname: profile.nickname || '岁岁旅人', avatar: profile.avatar || '', treeCount: c.tree, commentCount: c.comments, done: record.done, mediaPending: record.mediaPending, updatedAt: record.updatedAt, source: record.source,
         progress: cp.modules ? Math.round(PULL_MODULES.filter(function (m) { return cp.modules[m.key] && cp.modules[m.key].done; }).length / PULL_MODULES.length * 100) : 100 };
       return this.open().then(function (db) { return new Promise(function (resolve, reject) {
         var tx = db.transaction('accounts', 'readwrite'), store = tx.objectStore('accounts');
@@ -771,7 +802,7 @@
         var phone = String(a.phone || '').replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2');
         return '<div class="saved-account"><img class="avatar-img" src="' + srcAttr(a.avatar, DEFAULT_AVATAR) + '" alt="">' +
           '<div><b>' + esc(a.nickname || '岁岁旅人') + '</b><small>' + esc(phone) + ' · 树洞 ' + Number(a.treeCount || 0) + ' · 评论 ' + Number(a.commentCount || 0) + '</small>' +
-          '<small>' + (a.done ? '已完整保存' : '已同步 ' + Number(a.progress || 0) + '%，可继续') + '</small></div>' +
+          '<small>' + (a.done && !a.mediaPending ? '已完整保存' : (a.mediaPending ? '文字已保存，照片语音需重新导入媒体卷' : '已同步 ' + Number(a.progress || 0) + '%，可继续')) + '</small></div>' +
           '<button type="button" data-enter-account="' + esc(a.key) + '">进入纪念馆</button><button type="button" data-remove-account="' + esc(a.key) + '">移除</button></div>';
       }).join('');
       $$('[data-enter-account]', box).forEach(function (btn) { btn.onclick = function () { enterSavedAccount(btn.getAttribute('data-enter-account')); }; });
@@ -792,6 +823,7 @@
         S.archive = archiveShape(saved.archive); S.pull = null; S.isLocalArchive = true; S.activeTab = 'tree';
         if (saved.file) S.zipReader = new SuisuiZipReader(saved.file);
         enterSuisuiApp();
+        if (saved.mediaPending) toast('文字已保存，照片语音需重新导入媒体卷');
         if (saved.file && S.zipReader) S.zipReader.load().then(function () { bindMedia(); }).catch(function () { toast('账号数据已打开，但原备份包媒体暂时无法读取'); });
       } else if (!saved.complete && !S.token) {
         S.archive = archiveShape(saved.archive); S.pull = null; S.isLocalArchive = true; S.activeTab = 'tree'; enterSuisuiApp();
@@ -924,6 +956,43 @@
     openArchiveFiles([file]);
   }
 
+  /* 归档引用的媒体是否都能从当前 zipReader 读到：
+   * zipReader 为 null（纯 json 导入）时，没有媒体引用就算齐全。 */
+  function allMediaReadable(archive) {
+    var refs = collectMediaRefs(archive);
+    if (!refs.length) return true;
+    if (!S.zipReader || typeof S.zipReader.has !== 'function') return false;
+    return refs.every(function (ref) { return S.zipReader.has(ref.url); });
+  }
+
+  /* 按条目 id/键把新增归档并进已有归档：条目级 dedupItems，评论递归并集。 */
+  function mergeItems(existing, added) {
+    return dedupItems(existing, added);
+  }
+
+  function mergeArchiveInto(existing, added) {
+    if (!existing) return added;
+    if (!added) return existing;
+    PULL_MODULES.forEach(function (m) {
+      if (m.key === 'profile') return;
+      var dst = moduleListOf(m.key, existing);
+      var src = moduleListOf(m.key, added);
+      var merged = mergeItems(dst, src);
+      if (m.key === 'letters_in') existing.post.inbox = merged;
+      else if (m.key === 'letters_reply') existing.post.replied = merged;
+      else if (m.key === 'letters_future') existing.museum.future = merged;
+      else existing[m.key] = merged;
+    });
+    if (added.profile && added.profile.nickname) {
+      var p = existing.profile || {};
+      Object.keys(added.profile).forEach(function (k) {
+        if (p[k] === undefined || p[k] === '' || p[k] === 0) p[k] = added.profile[k];
+      });
+      existing.profile = p;
+    }
+    return existing;
+  }
+
   /* v1.3.0：多卷一起选 → SuisuiZipReader 合并索引，索引卷里的 archive.json 驱动打开。
    * 单 json / 单 zip 与旧逻辑兼容。 */
   function openArchiveFiles(files) {
@@ -937,6 +1006,8 @@
         S.zipReader = null;
         S.pull = null;
         S.activeTab = 'tree';
+        S.archive._allMediaReadable = allMediaReadable(S.archive);
+        IDB.put({ archive: S.archive, modules: {}, complete: !!S.archive._allMediaReadable, mediaPending: !S.archive._allMediaReadable, source: 'import', uid: S.archive.profile.uid, phone: '' }).catch(function () {});
         enterSuisuiApp();
         toast('已打开这份回忆');
       }).catch(function () { toast('文件内容格式不正确，请选择岁岁备份包'); });
@@ -947,20 +1018,27 @@
       reader.load().then(function () {
         return reader.readJSON('data/archive.json');
       }).then(function (data) {
-        S.archive = archiveShape(data);
-        S.accountKey = accountKeyOf(S.archive);
+        var incoming = archiveShape(data);
+        var incomingKey = accountKeyOf(incoming);
+        /* 已有保存账号再打开新 zip：同账号按 id 合并，不整体覆盖。 */
+        if (S.archive && accountKeyOf(S.archive) === incomingKey && array(S.archive.tree).length) {
+          S.archive = archiveShape(mergeArchiveInto(S.archive, incoming));
+        } else {
+          S.archive = incoming;
+        }
+        S.accountKey = incomingKey;
         S.zipReader = reader;
         S.pull = null;
         S.isLocalArchive = true;
         S.activeTab = 'tree';
-        IDB.put({ archive: S.archive, modules: {}, complete: true, source: 'import', file: files[0], uid: S.archive.profile.uid, phone: '' }).catch(function () {});
+        S.archive._allMediaReadable = allMediaReadable(S.archive);
+        IDB.put({ archive: S.archive, modules: {}, complete: !!S.archive._allMediaReadable, mediaPending: !S.archive._allMediaReadable, source: 'import', file: files[0], uid: S.archive.profile.uid, phone: '' }).catch(function () {});
         enterSuisuiApp();
         var vols = reader.volumes || [];
         var total = vols.map(function (v) { return String(v.vol).split('/')[1]; }).filter(Boolean)[0];
-        var got = vols.length;
         toast(files.length > 1
-          ? ('岁岁备份包已打开（合并 ' + files.length + ' 个分卷' + (total ? '，共 ' + total + ' 卷' : '') + '）')
-          : '岁岁备份包已打开');
+          ? ('岁岁备份包已打开（合并 ' + files.length + ' 个分卷' + (total ? '，共 ' + total + ' 卷' : '') + (S.archive._allMediaReadable ? '' : '，部分媒体卷未选中') + '）')
+          : ('岁岁备份包已打开' + (S.archive._allMediaReadable ? '' : '（媒体读不到，文字已可看，补齐卷后再打开一次即可）')));
       }).catch(function () { toast('文件内容格式不正确，请选择岁岁备份包'); });
     } catch (e) {
       toast('这份备份包暂时打不开，请再试一次');
@@ -998,15 +1076,34 @@
     };
     cp.archive = archiveShape(cp.archive || initArchive);
     cp.modules = cp.modules || {};
+    cp.commentQueue = cp.commentQueue || [];   // [{treeId, cursor}] 树洞评论续拉队列
     PULL_MODULES.forEach(function (m) {
       if (!cp.modules[m.key]) cp.modules[m.key] = { done: false, cursor: '', pageNo: 1, count: 0 };
+      /* 老 checkpoint 兼容：补齐新字段 */
+      cp.modules[m.key].listDone = !!cp.modules[m.key].listDone;
+      cp.modules[m.key].stall = Number(cp.modules[m.key].stall) || 0;
     });
+    refreshCommentsPending(cp);
     return cp;
+  }
+
+  /* 已收树洞里「官方报了评论数、实际还没收齐」的条数：
+   * 有 pending 时 cp.complete 不得为 true（评论没完不算完成）。 */
+  function refreshCommentsPending(cp) {
+    var n = 0;
+    array(cp.archive && cp.archive.tree).forEach(function (t) {
+      var got = array(t.comments).reduce(function (acc, c) { return acc + 1 + array(c.subComments).length; }, 0);
+      if (Number(t.commentsCount || 0) > got) n += 1;
+    });
+    cp.commentsPending = n;
+    return n;
   }
 
   function dedupItems(existing, added) {
     /* 增量去重：只在新增页上判重一次（已存在的 15,000+ 条不再重建 seen 表）。
-     * 兼容旧调用形态 dedupItems(list)：传入单数组时等同全量去重。 */
+     * 兼容旧调用形态 dedupItems(list)：传入单数组时等同全量去重。
+     * 命中同一条目时不再整条丢弃：把新页带的评论按 dedupComments
+     * 并集合进已有条目，短版条目绝不会盖掉长版的评论。 */
     if (added === undefined) {
       var seen0 = {}, out0 = [];
       array(existing).forEach(function (x) {
@@ -1017,10 +1114,14 @@
     }
     var list = array(existing);
     var seen = {};
-    list.forEach(function (x) { seen[itemKey(x)] = true; });
+    list.forEach(function (x) { seen[itemKey(x)] = x; });
     array(added).forEach(function (x) {
       var k = itemKey(x);
-      if (!seen[k]) { seen[k] = true; list.push(x); }
+      var hit = seen[k];
+      if (!hit) { seen[k] = x; list.push(x); return; }
+      hit.comments = dedupComments(hit.comments, x.comments);
+      var subTotal = array(hit.comments).reduce(function (acc, c) { return acc + array(c.subComments).length; }, 0);
+      hit.commentsCount = Math.max(Number(hit.commentsCount || 0), Number(x.commentsCount || 0), hit.comments.length + subTotal);
     });
     return list;
   }
@@ -1030,6 +1131,7 @@
 
   function moduleItems(key, archive) {
     var d = archive || S.archive || emptyArchive();
+    if (key === 'comments') return []; // 评论模块的产物合进对应树洞条目，不做独立列表
     if (key === 'profile') return d.profile && d.profile.nickname ? [d.profile] : [];
     if (key === 'letters_in') return d.post.inbox || [];
     if (key === 'letters_reply') return d.post.replied || [];
@@ -1040,33 +1142,93 @@
   function applyPage(cp, module, response) {
     /* items 已在下方 normalizeItem；cp.archive 保持初次 archiveShape 后的规整形态，
      * 万级账号每页增量合并时绝不再对整个 cp.archive 重跑 archiveShape（O(N²) 卡死源）。 */
-    var items = array(response.items).map(function (item) { return normalizeItem(item, module.key); });
-    var prevLen = moduleItems(module.key, cp.archive).length;
-    if (module.key === 'profile') {
-      cp.archive.profile = profileOf(response.profile || items[0] || cp.archive.profile);
-    } else if (module.key === 'letters_in') {
-      cp.archive.post.inbox = dedupItems(cp.archive.post.inbox, items);
-    } else if (module.key === 'letters_reply') {
-      cp.archive.post.replied = dedupItems(cp.archive.post.replied, items);
-    } else if (module.key === 'letters_future') {
-      cp.archive.museum.future = dedupItems(cp.archive.museum.future, items);
+    cp.commentQueue = cp.commentQueue || [];
+    var state = cp.modules[module.key] || (cp.modules[module.key] = { done: false, cursor: '', pageNo: 1, count: 0, listDone: false, stall: 0 });
+    /* comments 页直接按评论形态规整（与条目内 comments 同构），其余模块走 normalizeItem。 */
+    var items = module.key === 'comments'
+      ? commentsOf(response.items)
+      : array(response.items).map(function (item) { return normalizeItem(item, module.key); });
+    var added;
+    /* 发出请求时的游标：comments 用队列项 cursor，主列表用 state.cursor。 */
+    var reqCursor = module.key === 'comments'
+      ? String((cp.commentQueue.filter(function (q) { return String(q.treeId) === String(response.treeId); })[0] || {}).cursor || '')
+      : String(state.cursor || '');
+    if (module.key === 'comments') {
+      /* 评论续拉页：按 treeId 把评论并集合进对应树洞条目，不入主列表。 */
+      var q = cp.commentQueue.filter(function (x) { return String(x.treeId) === String(response.treeId); })[0];
+      var target = array(cp.archive.tree).filter(function (t) {
+        return String(t.id) === String(response.treeId);
+      })[0];
+      added = 0;
+      if (target) {
+        var before = array(target.comments).reduce(function (acc, c) { return acc + 1 + array(c.subComments).length; }, 0);
+        target.comments = dedupComments(target.comments, items);
+        var after = array(target.comments).reduce(function (acc, c) { return acc + 1 + array(c.subComments).length; }, 0);
+        target.commentsCount = Math.max(Number(target.commentsCount || 0), after);
+        added = after - before;
+        bumpCounts(cp.archive, 'comments', 0, items);
+      }
+      if (q) {
+        if (response.hasMore) q.cursor = response.nextCursor || '';
+        else cp.commentQueue.splice(cp.commentQueue.indexOf(q), 1);
+      }
+      state.pageNo += 1;
     } else {
-      cp.archive[module.key] = dedupItems(cp.archive[module.key], items);
-    }
-    if (module.key === 'friends') cp.archive.friends = cp.archive[module.key];
+      var prevLen = moduleItems(module.key, cp.archive).length;
+      if (module.key === 'profile') {
+        cp.archive.profile = profileOf(response.profile || items[0] || cp.archive.profile);
+      } else if (module.key === 'letters_in') {
+        cp.archive.post.inbox = dedupItems(cp.archive.post.inbox, items);
+      } else if (module.key === 'letters_reply') {
+        cp.archive.post.replied = dedupItems(cp.archive.post.replied, items);
+      } else if (module.key === 'letters_future') {
+        cp.archive.museum.future = dedupItems(cp.archive.museum.future, items);
+      } else {
+        cp.archive[module.key] = dedupItems(cp.archive[module.key], items);
+      }
+      if (module.key === 'friends') cp.archive.friends = cp.archive[module.key];
 
-    var newLen = moduleItems(module.key, cp.archive).length;
-    var added = module.key === 'profile' ? 1 : Math.max(0, newLen - prevLen);
-    var state = cp.modules[module.key];
-    state.count = module.key === 'profile' ? 1 : newLen;
-    state.cursor = response.nextCursor || '';
-    state.pageNo += 1;
-    state.done = !response.hasMore || (module.key !== 'profile' && items.length > 0 && added === 0);
+      var newLen = moduleItems(module.key, cp.archive).length;
+      added = module.key === 'profile' ? 1 : Math.max(0, newLen - prevLen);
+      state.count = module.key === 'profile' ? 1 : newLen;
+      state.cursor = response.nextCursor || '';
+      state.pageNo += 1;
+      state.listDone = !response.hasMore;
+      /* 重复页不再误标完成：done 只看上游 hasMore；tree 还要评论队列清完才算 done。 */
+      state.done = !response.hasMore;
+      /* 树洞列表回来的 pendingComments：该页装不下的评论进续拉队列（同 treeId 去重只更新游标）。 */
+      if (module.key === 'tree') {
+        array(response.pendingComments).forEach(function (pc) {
+          if (!pc || pc.treeId == null) return;
+          var hit = cp.commentQueue.filter(function (qq) { return String(qq.treeId) === String(pc.treeId); })[0];
+          if (hit) hit.cursor = pc.commentsCursor || '';
+          else cp.commentQueue.push({ treeId: pc.treeId, cursor: pc.commentsCursor || '' });
+        });
+        /* 列表翻完但评论队列没清 → tree 不能标 done，留给 comments 续拉阶段。 */
+        if (state.done && cp.commentQueue.length) state.done = false;
+      }
+    }
+
+    /* 上游游标不前进防护：响应游标与发出请求时的游标相同且没新增 → 暂停，不死循环。 */
+    if (response.nextCursor != null && String(response.nextCursor) === reqCursor && added === 0) {
+      state.stall = (Number(state.stall) || 0) + 1;
+      if (state.stall >= 3 && S.pull && S.pull.cp === cp) {
+        S.pull.paused = true;
+        S.pull.errorMsg = '上游游标没有前进，已暂停避免死循环';
+      }
+    } else {
+      state.stall = 0;
+    }
 
     cp.count += added;
-    bumpCounts(cp.archive, module.key, added, items);
-    cp.complete = PULL_MODULES.every(function (m) { return cp.modules[m.key].done; });
+    if (module.key !== 'comments') bumpCounts(cp.archive, module.key, added, items);
+    refreshCommentsPending(cp);
+    cp.complete = PULL_MODULES.every(function (m) { return cp.modules[m.key].done; }) && cp.commentsPending === 0;
     return added;
+  }
+
+  function releaseWakeLock() {
+    if (S.wakeLock) { try { S.wakeLock.release(); } catch (e) {} S.wakeLock = null; }
   }
 
   function startPull(saved) {
@@ -1085,6 +1247,10 @@
     if (!pull || pull.running || pull.paused || pull.stopped) return;
     pull.running = true;
     pull.errorMsg = '';
+    /* 同步期间亮屏，避免长账号中途被系统休眠打断 */
+    if (!S.wakeLock && navigator.wakeLock && typeof navigator.wakeLock.request === 'function') {
+      navigator.wakeLock.request('screen').then(function (lock) { S.wakeLock = lock; }).catch(function () {});
+    }
     var lastSaveAt = 0;
     /* 大账号每页 await IDB.put 会把拉取节奏拖死（序列化几十 MB）。
      * 改为：模块收尾 / 全部完成 / 暂停时必落盘，页间最多每 2.5s 节流落盘。 */
@@ -1098,19 +1264,38 @@
     }
     (async function () {
       var delays = [1200, 2500, 5000, 8000, 12000];
+      pull.cp.commentQueue = pull.cp.commentQueue || [];
       while (!pull.paused && !pull.stopped) {
         var mod = PULL_MODULES.filter(function (m) { return !pull.cp.modules[m.key].done; })[0];
-        if (!mod) { pull.cp.complete = true; break; }
+        /* 评论续拉阶段：队列非空，且（没有其他待拉模块 或 tree 列表已翻完）→ 轮转 tree 分支发 comments 请求 */
+        var commentsPhase = false;
+        var commentJob = null;
+        var treeState0 = pull.cp.modules.tree || {};
+        if (pull.cp.commentQueue.length && (!mod || (mod.key === 'tree' && treeState0.listDone))) {
+          mod = PULL_MODULES.filter(function (m) { return m.key === 'tree'; })[0];
+          commentsPhase = true;
+          commentJob = pull.cp.commentQueue[0];
+        }
+        if (!mod) { pull.cp.complete = pull.cp.commentsPending === 0; break; }
         pull.active = mod.key;
         refreshTopBackupBar();
         var res;
         try {
           var state = pull.cp.modules[mod.key];
-          res = await safeFetchJson('/api/suisui/pull_page', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ module: mod.key, cursor: state.cursor, pageNo: state.pageNo,
-              batchPages: mod.key === 'tree' ? 2 : 4, token: S.token, phone: S.phone, uid: S.uid, demo: S.demo })
-          });
+          if (commentsPhase) {
+            /* 评论续拉：不带 batchPages/pageNo 分页字段，只带 treeId+cursor */
+            res = await safeFetchJson('/api/suisui/pull_page', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ module: 'comments', treeId: commentJob.treeId, cursor: commentJob.cursor,
+                token: S.token, phone: S.phone, uid: S.uid, demo: S.demo })
+            });
+          } else {
+            res = await safeFetchJson('/api/suisui/pull_page', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ module: mod.key, cursor: state.cursor, pageNo: state.pageNo,
+                batchPages: mod.key === 'tree' ? 1 : 4, token: S.token, phone: S.phone, uid: S.uid, demo: S.demo })
+            });
+          }
         } catch (err) {
           if (pull.stopped || pull.paused) break;
           var retryable = err.retryable || err.name === 'AbortError' || err instanceof TypeError;
@@ -1127,13 +1312,17 @@
         }
         if (pull.stopped) break;
         pull.retryCount = 0;
-        var added = applyPage(pull.cp, mod, res);
+        var added = applyPage(pull.cp, commentsPhase ? { key: 'comments' } : mod, res);
         S.archive = pull.cp.archive;
+        if (commentsPhase) {
+          /* 评论队列清零 → tree 收尾：评论齐全时 complete，未齐时停拉但 cp.complete 保持 false */
+          if (!pull.cp.commentQueue.length) pull.cp.modules.tree.done = true;
+        }
         var stateAfter = pull.cp.modules[mod.key];
         try { await flushCheckpoint(stateAfter.done || pull.cp.complete || pull.paused); } catch (err) { break; }
         if (pull.stopped) break;
         refreshTopBackupBar(true);
-        if (mod.key === 'tree' && added && S.activeTab === 'tree') {
+        if (!commentsPhase && mod.key === 'tree' && added && S.activeTab === 'tree') {
           var stage = $('#suisui-stage');
           if (stage && $('.tree-feed-list .empty-state', stage) && !hasPlayingAudio()) renderCurrentStage();
           else { pull.pendingTree += added; showNewTreeNotice(); }
@@ -1141,6 +1330,7 @@
       }
       pull.running = false;
       pull.active = '';
+      releaseWakeLock();
       if (pull.stopped) return;
       try { await IDB.put(pull.cp); } catch (e) {}
       refreshTopBackupBar();
@@ -1358,7 +1548,7 @@
     }
     rightBtnsHTML += '<button class="btn btn-soft" id="btn-switch-account" type="button">切换账号</button>';
     rightBtnsHTML += '<button class="btn btn-primary btn-export-primary" id="btn-export-all" type="button"' + (S.exporting || syncing ? ' disabled' : '') + '>' +
-      (S.exporting ? '正在整理…' : (syncing ? '整理回忆中…' : '保存全部岁岁回忆')) +
+      (S.exporting ? '正在整理…' : (syncing ? '整理回忆中…' : (pull && pull.paused ? '先保存已同步的' : '保存全部岁岁回忆'))) +
     '</button>';
 
     topbar.innerHTML = '<div class="backup-topbar-inner">' +
@@ -1384,6 +1574,9 @@
 
     var toggleBtn = $('#toggle-backup-drawer', topbar);
     if (toggleBtn) toggleBtn.onclick = function () { S.drawerOpen = !S.drawerOpen; refreshTopBackupBar(); };
+    /* 标签页标题同步进度：同步中「同步 N% · 岁岁纪念馆」，完成/无同步恢复原标题。 */
+    if (!S.baseTitle) S.baseTitle = document.title || '岁岁纪念馆';
+    document.title = syncing ? ('同步 ' + pct + '% · 岁岁纪念馆') : S.baseTitle;
     var exportBtn = $('#btn-export-all', topbar);
     if (exportBtn) exportBtn.onclick = function () {
       if (syncStillGoing()) { toast('正在整理回忆中，请稍候…'); return; }
@@ -1660,12 +1853,16 @@
   function renderTreeTab(stage) {
     var d = S.archive || emptyArchive();
     var c = counts(d);
+    var official = Number((d.profile && d.profile.treeholeCount) || 0);
+    var treeLine = official > 0
+      ? '已同步 ' + c.tree + ' / 官方 ' + official + ' 条树洞 · ' + c.media + ' 张配图 · ' + c.audio + ' 段语音 · ' + c.comments + ' 条评论'
+      : '已同步 ' + c.tree + ' 条树洞（官方总数尚未拿到） · ' + c.media + ' 张配图 · ' + c.audio + ' 段语音 · ' + c.comments + ' 条评论';
     var banner = el('section', 'tree-planet-banner');
     banner.innerHTML =
       '<div class="tree-planet-top">' +
         '<div>' +
           '<h2>我的岁岁树洞</h2>' +
-          '<p>共珍藏 ' + c.tree + ' 条树洞 · ' + c.media + ' 张配图 · ' + c.audio + ' 段语音 · ' + c.comments + ' 条评论</p>' +
+          '<p>' + esc(treeLine) + '</p>' +
         '</div>' +
         '<img class="planet-main-img" src="' + A + 'ic_star_view_0.png" alt="">' +
       '</div>' +
@@ -2316,7 +2513,8 @@
   }
 
   function syncStillGoing() {
-    S.syncing = !!(S.pull && S.pull.cp && !S.pull.cp.complete);
+    /* paused 不算「正在同步」：用户可先把已拉到的部分导出去。 */
+    S.syncing = !!(S.pull && !S.pull.stopped && !S.pull.paused && S.pull.cp && !S.pull.cp.complete);
     return S.syncing;
   }
 
@@ -2458,6 +2656,33 @@
     return base + '_第' + idx + '卷（共' + total + '卷）.zip';
   }
 
+  /* FNV-1a 32bit → 10 位十六进制：同一 url 永远同名，导出/补导/重建可复现。 */
+  function mediaHash10(url) {
+    var s = String(url || '');
+    var h = 0x811c9dc5;
+    for (var i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    h = h >>> 0;
+    return ('000000000' + h.toString(16)).slice(-10);
+  }
+
+  /* 媒体导出名：media/<kind>_<hash10>_<idx>.<ext>，hash 取自 ref.url 还原出的对象路径
+   *（去掉 /api/media-proxy?path= 前缀，取不到就用整个 url）；idx 兜底防碰撞。 */
+  function mediaFileName(ref) {
+    var kind = String(ref.kind || 'media').replace(/[^a-z0-9_-]/gi, 'media');
+    var base = String(ref.url || '');
+    try {
+      var u = new URL(base, location.origin);
+      var pathParam = u.searchParams.get('path');
+      if (pathParam) base = pathParam;
+    } catch (e) {}
+    var hash = mediaHash10(base);
+    var idx = ref.index != null ? '_' + ref.index : '';
+    return 'media/' + kind + '_' + hash + idx + '.' + guessExt(ref.url);
+  }
+
   /* 安卓壳直写 media/：fetch 下来的字节直接落 files/archives/<key>/media，
    * App 内立即可看，不需要用户管 zip。返回 true 表示壳已接收。 */
   var NATIVE_FILE_CHUNK = 768 * 1024; // base64 分块，防单次桥调用参数过长
@@ -2579,6 +2804,8 @@
 
     try {
       var archive = archiveForExport();
+      /* 暂停中导出：这是未完成的阶段性包，README/manifest 都要写明 */
+      var partialExport = !!(S.pull && S.pull.paused && S.pull.cp && !S.pull.cp.complete);
       var accountKey = accountKeyOf(archive);
       var baseName = '岁岁时光备份_' + (archive.profile.nickname || '岁友') + '_' + new Date().toISOString().slice(0, 10);
       var directOk = isNativeShell() && typeof window.SuisuiNative.beginSaveFile === 'function';
@@ -2587,8 +2814,7 @@
       var refs = collectMediaRefs(archive);
       var urlMap = {};
       refs.forEach(function (ref) {
-        var kind = String(ref.kind || 'media').replace(/[^a-z0-9_-]/gi, 'media');
-        urlMap[ref.url] = 'media/' + kind + '_' + ref.index + '.' + guessExt(ref.url);
+        urlMap[ref.url] = mediaFileName(ref);
       });
       var resume = null;
       try {
@@ -2618,6 +2844,7 @@
       state.volumes = state.volumes || [];
       state.completed = Number(state.completed) || 0;
 
+      if (partialExport) state.partial = true;
       var exp = S.exportSession = {
         state: state,
         pendingVol: null,
@@ -2789,14 +3016,19 @@
         manifestLines.push('', '【缺失清单】共 ' + missing.length + ' 项（原文件在岁岁端已失效或暂不可下）', missing.join('\n'));
       }
       writer.add('media-urls.txt', refs.length ? manifestLines.join('\n') : '（本账号无媒体文件）');
-      writer.add('README-如何查看我的回忆.txt', [
+      var readmeLines = [
         '【岁岁 · 时光纪念馆 本地完整备份包】',
         '1. 本备份为多卷自描述包：每卷都有 manifest.json 写明 exportId 与卷号，索引卷（最后一卷）内含纪念册与全部文字。',
         '2. 手机查看：打开岁岁备份网页，点「打开本地备份包」，把全部卷多选一起打开即可自动合并；安卓 App 里媒体已直接装进纪念馆，无需解压。',
         '3. 电脑查看：把全部卷解压到同一个文件夹，双击「打开岁岁纪念馆.html」。',
         '4. 记事本阅读：直接打开「岁岁记忆全文合集.txt」按时间轴读全部文字与评论。',
         '5. 完整性核对：media-urls.txt 是媒体对象路径清单（非下载直链，签名 12 分钟会过期）；有缺失项可在 App 内点「补齐缺失媒体」生成补齐卷。'
-      ].join('\n'));
+      ];
+      if (partialExport) {
+        var officialCount = Number((archive.profile && archive.profile.treeholeCount) || 0);
+        readmeLines.splice(1, 0, '⚠ 本备份是未完成的阶段性导出，共已同步 ' + array(archive.tree).length + ' 条树洞 / 官方 ' + (officialCount || '未知') + ' 条');
+      }
+      writer.add('README-如何查看我的回忆.txt', readmeLines.join('\n'));
 
       await closeVolume(true, {
         totalVols: volIndex + 1,
@@ -2804,7 +3036,8 @@
         savedMedia: refs.length - failedUrls.length,
         failedMediaCount: failedUrls.length,
         missingMedia: missing,
-        urlMap: urlMap
+        urlMap: urlMap,
+        partial: !!partialExport
       });
 
       state.complete = true;
@@ -2836,8 +3069,7 @@
     var refs = collectMediaRefs(archiveForExport());
     var urlMap = {};
     refs.forEach(function (ref) {
-      var kind = String(ref.kind || 'media').replace(/[^a-z0-9_-]/gi, 'media');
-      urlMap[ref.url] = 'media/' + kind + '_' + ref.index + '.' + guessExt(ref.url);
+      urlMap[ref.url] = mediaFileName(ref);
     });
     var byPath = {};
     missingPaths.forEach(function (p) { byPath[p] = true; });
@@ -3052,5 +3284,17 @@
   }
 
   document.addEventListener('DOMContentLoaded', boot);
+  /* 回前台时：上次因网络类原因暂停的同步自动续拉 */
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) return;
+    var pull = S.pull;
+    if (!pull || !pull.paused || pull.stopped) return;
+    if (/网络|连接|超时|游标|失败|重试|开小差|上游/.test(String(pull.errorMsg || ''))) {
+      pull.paused = false;
+      refreshTopBackupBar();
+      runPull();
+      toast('已接着上次继续');
+    }
+  });
   window.SuisuiApp = { safeFetchJson: safeFetchJson, exportZip: exportFullZip, _state: S };
 }());

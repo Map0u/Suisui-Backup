@@ -1,0 +1,6 @@
+ok: baseline: index vol import should succeed
+ok: R3a: media-first then index lands media and archive.json
+ok: R3b: re-importing index keeps media/img_1.png and voice_1.wav
+ok: R3c: cross-account media vol rejected
+ok: R3d: photo A stays JPG_A, photo B is its own file JPG_B
+ALL PASS: multi-volume merge works

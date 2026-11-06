@@ -163,32 +163,46 @@ public class MainActivity extends Activity {
             return;
         }
         if (requestCode != REQ_PICK_ZIP || resultCode != RESULT_OK || data == null) return;
-        final Uri uri = data.getData();
-        if (uri == null) return;
+        /* 多选时 uri 在 ClipData 里；单选走 getData()。全部收进 uris 串行导入。 */
+        final java.util.ArrayList<Uri> uris = new java.util.ArrayList<Uri>();
+        android.content.ClipData clip = data.getClipData();
+        if (clip != null && clip.getItemCount() > 0) {
+            for (int i = 0; i < clip.getItemCount(); i++) {
+                Uri u = clip.getItemAt(i).getUri();
+                if (u != null) uris.add(u);
+            }
+        }
+        if (uris.isEmpty() && data.getData() != null) uris.add(data.getData());
+        if (uris.isEmpty()) return;
         if (!IMPORTING.compareAndSet(false, true)) {
             notifyProgress(0, 0);
             return;
         }
         notifyProgress(0, 0);
-        final ArchiveImporter.ZipSource source = new ArchiveImporter.ZipSource() {
-            @Override
-            public InputStream open() throws IOException {
-                InputStream in = getContentResolver().openInputStream(uri);
-                if (in == null) throw new IOException("empty");
-                return in;
-            }
-        };
         new Thread(new Runnable() {
             @Override
             public void run() {
-                ArchiveImporter.Result result;
+                ArchiveImporter.Result result = new ArchiveImporter.Result(true, "", 0, 0, false);
                 try {
-                    result = ArchiveImporter.importZip(source, getFilesDir(), new ArchiveImporter.Progress() {
-                        @Override
-                        public void onProgress(int percent, int count) {
-                            notifyProgress(percent, count);
-                        }
-                    });
+                    for (int i = 0; i < uris.size(); i++) {
+                        final Uri uri = uris.get(i);
+                        ArchiveImporter.ZipSource source = new ArchiveImporter.ZipSource() {
+                            @Override
+                            public InputStream open() throws IOException {
+                                InputStream in = getContentResolver().openInputStream(uri);
+                                if (in == null) throw new IOException("empty");
+                                return in;
+                            }
+                        };
+                        result = ArchiveImporter.importZip(source, getFilesDir(), new ArchiveImporter.Progress() {
+                            @Override
+                            public void onProgress(int percent, int count) {
+                                notifyProgress(percent, count);
+                            }
+                        });
+                        /* 某一卷失败立刻停，不继续灌后面的卷 */
+                        if (!result.ok) break;
+                    }
                 } finally {
                     IMPORTING.set(false);
                 }
@@ -311,6 +325,7 @@ public class MainActivity extends Activity {
                 "application/octet-stream",
                 "application/x-zip-compressed"
         });
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         try {
             startActivityForResult(intent, REQ_PICK_ZIP);

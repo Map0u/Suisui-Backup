@@ -1,0 +1,32 @@
+
+=== R2 重复页被当成完成（applyPage, app.js:1064）===
+    applyPage 返回 added=0, done=false, cursor=c2
+  [PASS] R2 整页都是已存在条目且 hasMore:true 时 modules.tree.done 应保持 false
+
+=== R5 评论不能盖掉（dedupItems 真实合并）===
+    先短后长: comments=c1; 先长后短: comments=c1
+  [PASS] R5-短长 先短后长合并后 c1 评论仍在
+  [PASS] R5-长短 先长后短合并后 c1 评论仍在（不得被后到的空评论版本盖掉）
+
+=== R5附 评论没完不能算完成（commentsPending 判定）===
+    cp.complete=false, cp.commentsPending=1
+  [PASS] R5附-字段 存在 commentsPending（或等价）标记，标出已收条目里评论未齐的条数
+  [PASS] R5附-判定 存在评论未齐条目时 cp.complete 应为 false
+
+=== R6 只开索引卷不得标完整（openArchiveFiles, app.js:956）===
+    打开后: zipReader 卷数=1, vols=["2/2"], media/img1.png 可读=false
+    IDB.put 入参: complete=false source=import
+  [PASS] R6-前置 模拟成立：只喂了索引卷，媒体卷条目在 zipReader 里读不到
+  [PASS] R6-完成位 媒体读不到时 IDB.put 入参不得标 complete:true
+    accounts_index_v1 entry.done=false, 页面将显示「已同步 0%，可继续」
+  [PASS] R6-文案 账号索引不得显示「已完整保存」（done 位为 false）
+
+=== R4 暂停能先存（syncStillGoing, app.js:2318）===
+    syncStillGoing()=false; topbar 存在=true; #btn-export-all 存在=true
+    导出按钮 HTML: <button class="btn btn-primary btn-export-primary" id="btn-export-all" type="button">先保存已同步的</button>
+    顶栏标题: 先停一下：网络连接失败，请检查网络后重试
+  [PASS] R4-前置 顶栏真实画出了导出按钮（DOM 桩没放过断言）
+  [PASS] R4-同步位 paused 状态下 syncStillGoing() 应返回 false
+  [PASS] R4-导出键 暂停时 #btn-export-all 不得带 disabled（先存已拉到的数据）
+
+=== 汇总: 11/11 通过, 0 条失败 ===
