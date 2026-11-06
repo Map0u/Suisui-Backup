@@ -400,6 +400,14 @@ public final class ArchiveImporter {
             deleteTree(tmp);
             if (!tmp.mkdirs()) return new Result(false, "无法准备导入目录", 0, 0, false);
             Extracted extracted = extractWanted(source, tmp, progress);
+            /* v1.3.0 分卷合并：媒体卷没有 data/archive.json 但有 media/ + manifest.json(exportId)。
+             * 这种情况不替换整账号，而是把 media/* 直接追加进当前激活账号目录，
+             * manifest 里 accountKey 一致才收，防把别账号的媒体卷倒进来。 */
+            if (!extracted.hasArchiveJson && extracted.mediaCount > 0) {
+                Result merged = mergeMediaVolume(tmp, filesDir, extracted, progress);
+                deleteTree(tmp);
+                return merged;
+            }
             String invalid = archiveJsonError(tmp);
             if (invalid != null) {
                 deleteTree(tmp);
@@ -443,6 +451,89 @@ public final class ArchiveImporter {
     }
 
     /**
+     * 把「只有 media/ 没有 archive.json」的分卷媒体追加到激活账号目录，不整体替换。
+     * manifest.accountKey 与当前激活 key 一致（或 manifest 里 exportId 有效）才收。
+     */
+    private static Result mergeMediaVolume(File tmp, File filesDir, Extracted extracted, Progress progress) {
+        File root = activeArchiveRoot(filesDir);
+        if (root == null || !new File(root, "data/archive.json").isFile()) {
+            return new Result(false, "请先导入索引卷（含纪念馆数据的那一卷），再导入媒体卷", 0, 0, false);
+        }
+        /* 校验账号一致：manifest.accountKey 存在则必须等于当前激活 key */
+        try {
+            String activeKey = activeKey(filesDir);
+            File mf = new File(tmp, "manifest.json");
+            if (mf.isFile()) {
+                String volAccount = readJsonField(mf, "accountKey");
+                if (volAccount != null && volAccount.length() > 0 && activeKey != null
+                        && !volAccount.replaceAll("[^A-Za-z0-9_-]", "").equals(activeKey)) {
+                    return new Result(false, "这一卷属于别的账号，不能合并进当前纪念馆", 0, 0, false);
+                }
+            }
+        } catch (IOException ignored) { }
+        /* 逐文件 move：tmp/media/* → root/media/*（不覆盖已存在同名） */
+        File srcMedia = new File(tmp, "media");
+        File dstMedia = new File(root, "media");
+        int moved = moveTree(srcMedia, dstMedia);
+        /* manifest 一并放过去便于排查 */
+        File mf = new File(tmp, "manifest.json");
+        if (mf.isFile()) {
+            File dataDir = new File(root, "data");
+            if (!dataDir.isDirectory()) dataDir.mkdirs();
+            File dst = new File(dataDir, "vol-manifest-" + System.currentTimeMillis() + ".json");
+            mf.renameTo(dst);
+        }
+        if (progress != null) progress.onProgress(100, extracted.count);
+        return new Result(true, "", moved, moved, false);
+    }
+
+    private static int moveTree(File src, File dst) {
+        if (src == null || !src.exists()) return 0;
+        if (src.isFile()) {
+            if (dst.exists()) { src.delete(); return 0; }
+            File parent = dst.getParentFile();
+            if (parent != null && !parent.isDirectory()) parent.mkdirs();
+            if (src.renameTo(dst)) return 1;
+            /* rename 失败退化拷贝 */
+            try {
+                FileInputStream in = new FileInputStream(src);
+                FileOutputStream out = new FileOutputStream(dst);
+                try {
+                    byte[] buf = new byte[65536];
+                    int n;
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                    out.flush();
+                } finally {
+                    try { in.close(); } catch (IOException ignored) {}
+                    try { out.close(); } catch (IOException ignored) {}
+                }
+                src.delete();
+                return 1;
+            } catch (IOException e) {
+                return 0;
+            }
+        }
+        int moved = 0;
+        File[] kids = src.listFiles();
+        if (kids != null) for (File k : kids) moved += moveTree(k, new File(dst, k.getName()));
+        return moved;
+    }
+
+    private static String readJsonField(File json, String field) throws IOException {
+        JsonScan scan = new JsonScan(json);
+        try {
+            scan.expect('{');
+            while (scan.nextMember()) {
+                String key = scan.string();
+                scan.expect(':');
+                if (field.equals(key)) return scan.scalar();
+                scan.skip(0);
+            }
+        } finally { scan.close(); }
+        return null;
+    }
+
+    /**
      * 单遍解压。进度按已解压文件数估算，避免先整包数一遍再解压。
      */
     private static Extracted extractWanted(ZipSource source, File tmp, Progress progress) throws IOException {
@@ -450,6 +541,7 @@ public final class ArchiveImporter {
         int count = 0;
         int media = 0;
         boolean hasJson = false;
+        long lastNotifyAt = 0L;
         byte[] buf = new byte[65536];
         try {
             ZipEntry entry;
@@ -486,8 +578,12 @@ public final class ArchiveImporter {
                 count++;
                 if (name.startsWith("media/")) media++;
                 if ("data/archive.json".equals(name)) hasJson = true;
-                if (progress != null && (count == 1 || count % 8 == 0)) {
-                    progress.onProgress(Math.min(95, 10 + count / 8), count);
+                /* 万级文件的包每个文件都回调会向主线程 post 上万个 Runnable，
+                 * evaluateJavascript 洪泛导致 UI 卡死。按数量+时间双闸门节流约 98%。 */
+                long now = System.currentTimeMillis();
+                if (progress != null && (count == 1 || count % 25 == 0) && now - lastNotifyAt >= 120) {
+                    lastNotifyAt = now;
+                    progress.onProgress(Math.min(95, 10 + count / 25), count);
                 }
             }
         } finally {

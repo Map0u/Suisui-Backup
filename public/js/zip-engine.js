@@ -40,14 +40,26 @@
    *   var blob = await w.finalize();                    // returns Blob
    * --------------------------------------------------------- */
   function SuisuiZipWriter() {
-    this.entries = [];      // {name, nameBytes, dataBytes, crc, offset}
-    this.parts = [];        // ordered Uint8Array chunks (local headers + data)
+    this.entries = [];      // {name, blob, crc, size, source}
+    this.parts = [];        // ordered Uint8Array/Blob chunks (local headers + data)
     this.offset = 0;
+    this.totalBytes = 0;    // 已 add 的文件原始字节总数（供分卷判断实时读取）
+    this.sealed = false;    // finalize 之后禁止再 add
   }
 
-  SuisuiZipWriter.prototype._push = function (u8) {
-    this.parts.push(u8);
-    this.offset += u8.byteLength != null ? u8.byteLength : (u8.length != null ? u8.length : u8.size);
+  SuisuiZipWriter.prototype._flushMeta = function () {
+    /* 把已 add 的条目元数据定稿到 manifest：未 finalize 也能拿到 size/crc */
+    this.entriesSnapshot = this.entries.map(function (e) { return { name: e.name, size: e.size || 0, crc: e.crc || 0 }; });
+  };
+
+  SuisuiZipWriter.prototype._push = function (part) {
+    this.parts.push(part);
+    this.offset += part.byteLength != null ? part.byteLength : (part.size != null ? part.size : (part.length || 0));
+    /* 万级文件时散装 Uint8Array 会让 new Blob(parts) 卡死 WebView：
+     * 每攒 200 个 chunk 先收敛成一个 Blob，保证 parts 数量级恒定在几百以内。 */
+    if (this.parts.length >= 200) {
+      this.parts = [new Blob(this.parts)];
+    }
   };
 
   function u16(v) { return new Uint8Array([v & 0xFF, (v >>> 8) & 0xFF]); }
@@ -61,7 +73,10 @@
   }
 
   // data: string | Uint8Array | ArrayBuffer | Blob | Promise<...>
+  // 立即算 CRC 并把原始字节包进 Blob，绝不把 Uint8Array 挂在 entry 上，
+  // 让调用方的大 buffer 立刻可被 GC（万级媒体文件时不至于撑爆 JS 堆）。
   SuisuiZipWriter.prototype.add = function (name, data) {
+    if (this.sealed) throw new Error('该 ZIP 卷已经封盘，请新建 SuisuiZipWriter');
     if (this.entries.length >= 65535) {
       throw new Error('ZIP 条目数超过 65535，无法生成标准备份包');
     }
@@ -74,12 +89,14 @@
       entry.crc = crc32(raw);
       entry.size = raw.byteLength;
       entry.blob = new Blob([raw]);
+      raw = null; // 立刻放开引用
     } else if (typeof Blob !== 'undefined' && data instanceof Blob) {
       entry.blob = data;
       entry.source = data;
     } else {
       entry.source = data;
     }
+    if (entry.size) this.totalBytes += entry.size;
     this.entries.push(entry);
   };
 
@@ -116,6 +133,7 @@
           var bytes = new Uint8Array(buf);
           e.crc = crc32(bytes);
           e.size = bytes.byteLength;
+          self.totalBytes += e.size;
           e.source = null;
           return e;
         });
@@ -123,6 +141,7 @@
       return self._resolve(e.source).then(function (bytes) {
         e.crc = crc32(bytes);
         e.size = bytes.byteLength;
+        self.totalBytes += e.size;
         e.blob = new Blob([bytes]);
         e.source = null;
         return e;
@@ -135,6 +154,8 @@
         var localOffset = self.offset;
 
         // ---- Local File Header (30 bytes + name) ----
+        // 合并 lh 与文件名成一个 Uint8Array，配合 _push 的 200-chunk 收敛，
+        // 最终喂给 new Blob() 的 part 数保持在几百以内（万级文件防 WebView 卡死）。
         var lh = concat([
           u32(0x04034b50),          // signature
           u16(20),                  // version needed
@@ -147,10 +168,8 @@
           u16(nameBytes.length),
           u16(0)                    // extra len
         ]);
-        self._push(lh);
-        self._push(nameBytes);
+        self._push(concat([lh, nameBytes]));
         self._push(e.blob);
-        self.offset += 0;
 
         // ---- Central Directory record ----
         var cd = concat([
@@ -193,25 +212,51 @@
       self._push(eocd);
       var blob = new Blob(self.parts, { type: 'application/zip' });
       self.parts = null;
+      self.entries = [];
+      self.sealed = true;
       return blob;
     });
   };
 
   /* ---------------- ZIP Reader (免解压随机读) ----------------
-   * var r = new SuisuiZipReader(file);         // File / Blob
-   * await r.load();                            // parse EOCD + CD
-   * r.list();                                  // [{name,offset,size,method}]
+   * var r = new SuisuiZipReader(fileOrFileArray); // File / Blob / File[]
+   * await r.load();                               // parse EOCD + CD（多文件自动合并索引）
+   * r.list();                                     // [{name,offset,size,method}]
    * var json = await r.readJSON('data/archive.json');
    * var url  = await r.objectURL('media/a.png', 'image/png');
+   *
+   * v1.3.0 分卷协议：传入同一 exportId 的多个分卷文件时，各卷中央目录合并成
+   * 一张索引（同名后卷覆盖先卷），media/* 条目按各自所在的卷文件切片读取。
+   * 卷 manifest（manifest.json）中的 exportId/vol 供合并校验。
    * --------------------------------------------------------- */
   function SuisuiZipReader(file) {
-    this.file = file;
-    this.index = Object.create(null); // name -> {offset, csize, usize, method, nameLen, extraLen}
+    if (file && typeof file.length === 'number' && typeof file.slice !== 'function') {
+      this.files = Array.prototype.slice.call(file); // FileList / File[]
+    } else if (Array.isArray(file)) {
+      this.files = file.slice();
+    } else {
+      this.files = file ? [file] : [];
+    }
+    this.file = this.files[0] || null; // 兼容旧字段
+    this.index = Object.create(null); // name -> {file, offset, csize, usize, method, crc}
     this.names = [];
+    this.volumes = [];                // [{exportId, vol, totalVols, accountKey}]
   }
 
   SuisuiZipReader.prototype.load = function () {
-    var file = this.file, self = this;
+    var self = this;
+    if (!this.files.length) return Promise.reject(new Error('没有选择备份包文件'));
+    /* 逐卷解析中央目录并合并索引；同一 exportId 的多卷文件顺序无关，
+     * 同名条目后载入的卷覆盖先载入的（索引卷放最后，天然覆盖媒体卷残留）。 */
+    var chain = Promise.resolve();
+    this.files.forEach(function (file) {
+      chain = chain.then(function () { return self._loadOne(file); });
+    });
+    return chain.then(function () { return self; });
+  };
+
+  SuisuiZipReader.prototype._loadOne = function (file) {
+    var self = this;
     var tailSize = Math.min(file.size, 22 + 65535); // EOCD + max comment
     return file.slice(file.size - tailSize, file.size).arrayBuffer().then(function (buf) {
       var dv = new DataView(buf);
@@ -245,11 +290,21 @@
           var lho = cdv.getUint32(p + 42, true);
           var name = td.decode(new Uint8Array(cdbuf, p + 46, nlen));
           var entryCrc = cdv.getUint32(p + 16, true);
-          self.index[name] = { offset: lho, csize: csize, usize: usize, method: method, crc: entryCrc };
-          self.names.push(name);
+          if (!self.index[name]) self.names.push(name);
+          self.index[name] = { file: file, offset: lho, csize: csize, usize: usize, method: method, crc: entryCrc };
           p += 46 + nlen + elen + clen;
         }
-        return self;
+        /* 读取卷 manifest 记录 exportId / vol，供调用方校验卷齐不齐 */
+        if (self.index['manifest.json'] && self.index['manifest.json'].file === file) {
+          return self.readBytes('manifest.json').then(function (bytes) {
+            try {
+              var mf = JSON.parse(td.decode(bytes));
+              if (mf && (mf.exportId || mf.vol != null)) {
+                self.volumes.push({ exportId: mf.exportId || '', vol: String(mf.vol || ''), accountKey: mf.accountKey || '' });
+              }
+            } catch (e) {}
+          }).catch(function () {});
+        }
       });
     });
   };
@@ -266,7 +321,7 @@
   SuisuiZipReader.prototype._rawSlice = function (name) {
     var e = this.index[name];
     if (!e) return Promise.reject(new Error('包内未找到 ' + name));
-    var file = this.file;
+    var file = e.file || this.file;
     // read local header to find data start (nameLen/extraLen may differ from CD)
     return file.slice(e.offset, e.offset + 30).arrayBuffer().then(function (h) {
       var dv = new DataView(h);

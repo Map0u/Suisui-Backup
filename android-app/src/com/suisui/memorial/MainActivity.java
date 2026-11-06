@@ -198,11 +198,15 @@ public class MainActivity extends Activity {
     }
 
     private void handleSaveZipResult(int resultCode, Intent data) {
+        final File srcFile = pendingSaveZipFile;
         if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            /* 用户取消保存时，大 ZIP 的归档同步也要收尾 */
+            if (srcFile != null && srcFile.isFile() && srcFile.length() >= 150L * 1024 * 1024) {
+                persistZipToArchive(srcFile);
+            }
             return;
         }
         final Uri destUri = data.getData();
-        final File srcFile = pendingSaveZipFile;
         if (srcFile == null || !srcFile.isFile()) {
             Toast.makeText(this, "未找到待保存的备份文件", Toast.LENGTH_SHORT).show();
             return;
@@ -233,6 +237,10 @@ public class MainActivity extends Activity {
                     }
                 } catch (Exception e) {
                     ok = false;
+                }
+                /* 保存写盘结束后，才解压同一份大 ZIP 更新本地归档（防读写对撞） */
+                if (srcFile.isFile() && srcFile.length() >= 150L * 1024 * 1024) {
+                    persistZipToArchive(srcFile);
                 }
                 final boolean success = ok;
                 runOnUiThread(new Runnable() {
@@ -627,7 +635,32 @@ public class MainActivity extends Activity {
     private void onZipReadyToSave(final File zipFile, final String filename) {
         if (zipFile == null || !zipFile.isFile() || zipFile.length() == 0) return;
 
-        // 每次都更新对应账号；解压失败不影响用户保存完整 ZIP。
+        /* 大 ZIP（>=150MB）在用户挑保存位置的同时去解压同一份文件，
+         * 会造成磁盘读写对撞并拖慢 ACTION_CREATE_DOCUMENT 的写盘；
+         * 改为保存动作结束后再静默更新本地归档。小 ZIP 仍可并行。 */
+        final boolean deferPersist = zipFile.length() >= 150L * 1024 * 1024;
+        if (!deferPersist) {
+            persistZipToArchive(zipFile);
+        }
+
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("application/zip");
+                intent.putExtra(Intent.EXTRA_TITLE, filename != null && filename.length() > 0 ? filename : "岁岁回忆备份.zip");
+                try {
+                    startActivityForResult(intent, REQ_SAVE_ZIP);
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "无法打开系统保存文件器", Toast.LENGTH_SHORT).show();
+                    if (deferPersist) persistZipToArchive(zipFile);
+                }
+            }
+        });
+    }
+
+    private void persistZipToArchive(final File zipFile) {
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -644,21 +677,6 @@ public class MainActivity extends Activity {
                 });
             }
         }, "suisui-persist").start();
-
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-                intent.addCategory(Intent.CATEGORY_OPENABLE);
-                intent.setType("application/zip");
-                intent.putExtra(Intent.EXTRA_TITLE, filename != null && filename.length() > 0 ? filename : "岁岁回忆备份.zip");
-                try {
-                    startActivityForResult(intent, REQ_SAVE_ZIP);
-                } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "无法打开系统保存文件器", Toast.LENGTH_SHORT).show();
-                }
-            }
-        });
     }
 
     private void notifySaveFailure() {
@@ -720,10 +738,191 @@ public class MainActivity extends Activity {
             });
         }
 
+        /**
+         * 前端在拉取完成/导出后可直接把 archive.json 写进当前激活账号目录，
+         * 免去靠反复解压几百 MB 大 ZIP 来同步账号元数据。
+         */
+        @JavascriptInterface
+        public void saveArchiveJsonDirect(final String json) {
+            if (json == null || json.length() == 0) return;
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    File root = ArchiveImporter.activeArchiveRoot(getFilesDir());
+                    if (root == null) return;
+                    File dataDir = new File(root, "data");
+                    if (!dataDir.isDirectory() && !dataDir.mkdirs()) return;
+                    File tmp = new File(dataDir, "archive.json.tmp");
+                    File out = new File(dataDir, "archive.json");
+                    try {
+                        FileOutputStream fos = new FileOutputStream(tmp);
+                        try {
+                            fos.write(json.getBytes(StandardCharsets.UTF_8));
+                            fos.getFD().sync();
+                        } finally {
+                            fos.close();
+                        }
+                        if (!tmp.renameTo(out)) {
+                            FileOutputStream fos2 = new FileOutputStream(out);
+                            try {
+                                fos2.write(json.getBytes(StandardCharsets.UTF_8));
+                            } finally {
+                                fos2.close();
+                            }
+                            tmp.delete();
+                        }
+                    } catch (IOException ignored) { }
+                }
+            }, "suisui-json-persist").start();
+        }
+
         @JavascriptInterface
         public void clearArchive() {
             if (IMPORTING.get()) return;
             clearArchiveDir();
+        }
+
+        /* ---- v1.3.0 直写归档媒体：分块 base64 → files/archives/<key>/<relPath>
+         * JS Bridge 是同步顺序调用，直接在桥线程写盘即可，不再派线程。
+         * 文件先写 <name>.part，finish 校验字节数后原子改名，中断不留半成品。 ---- */
+        private final Map<String, DirectFile> directFiles = new HashMap<String, DirectFile>();
+
+        private final class DirectFile {
+            File tmp;
+            File target;
+            long expected;
+            long written;
+            FileOutputStream out;
+        }
+
+        private String sanitizeRelPath(String relPath) {
+            if (relPath == null) return null;
+            String rel = relPath.replace('\\', '/');
+            while (rel.startsWith("/")) rel = rel.substring(1);
+            if (rel.length() == 0 || rel.indexOf('\0') >= 0) return null;
+            String[] parts = rel.split("/", -1);
+            for (String part : parts) {
+                if (part.length() == 0 || ".".equals(part) || "..".equals(part) || part.indexOf(':') >= 0) return null;
+            }
+            /* 只允许 media/ 与 data/ 下，防前端越界写任意路径 */
+            if (!rel.startsWith("media/") && !rel.startsWith("data/")) return null;
+            return rel;
+        }
+
+        @JavascriptInterface
+        public void beginSaveFile(String fileId, String relPath, long totalBytes) {
+            if (fileId == null) return;
+            String rel = sanitizeRelPath(relPath);
+            File root = ArchiveImporter.activeArchiveRoot(getFilesDir());
+            if (rel == null || root == null || totalBytes < 0) return;
+            File target = new File(root, rel);
+            File parent = target.getParentFile();
+            if (parent != null && !parent.isDirectory() && !parent.mkdirs()) return;
+            DirectFile df = new DirectFile();
+            try {
+                df.tmp = new File(target.getParentFile(), target.getName() + ".part");
+                df.target = target;
+                df.expected = totalBytes;
+                df.written = 0;
+                df.out = new FileOutputStream(df.tmp);
+            } catch (IOException e) {
+                return;
+            }
+            synchronized (directFiles) {
+                DirectFile old = directFiles.put(fileId, df);
+                if (old != null) {
+                    synchronized (old) {
+                        if (old.out != null) { try { old.out.close(); } catch (IOException ignored) {} }
+                        if (old.tmp != null) old.tmp.delete();
+                    }
+                }
+            }
+        }
+
+        @JavascriptInterface
+        public void appendSaveFileChunk(String fileId, String base64Chunk) {
+            if (fileId == null || base64Chunk == null || base64Chunk.length() == 0) return;
+            byte[] bytes;
+            try {
+                bytes = Base64.decode(base64Chunk, Base64.DEFAULT);
+            } catch (Exception e) {
+                return;
+            }
+            DirectFile df;
+            synchronized (directFiles) {
+                df = directFiles.get(fileId);
+            }
+            if (df == null) return;
+            synchronized (df) {
+                if (df.out == null) return;
+                try {
+                    df.out.write(bytes);
+                    df.written += bytes.length;
+                } catch (IOException e) {
+                    try { df.out.close(); } catch (IOException ignored) {}
+                    df.out = null;
+                }
+            }
+        }
+
+        @JavascriptInterface
+        public void finishSaveFile(String fileId) {
+            if (fileId == null) return;
+            DirectFile df;
+            synchronized (directFiles) {
+                df = directFiles.remove(fileId);
+            }
+            if (df == null) return;
+            synchronized (df) {
+                try {
+                    if (df.out != null) {
+                        df.out.flush();
+                        df.out.getFD().sync();
+                        df.out.close();
+                        df.out = null;
+                    }
+                } catch (IOException e) {
+                    if (df.tmp != null) df.tmp.delete();
+                    return;
+                }
+                if (df.tmp == null || df.target == null || df.written != df.expected || df.tmp.length() != df.expected) {
+                    if (df.tmp != null) df.tmp.delete();
+                    return;
+                }
+                if (!df.tmp.renameTo(df.target)) {
+                    /* rename 失败退化拷贝 */
+                    try {
+                        FileInputStream in = new FileInputStream(df.tmp);
+                        FileOutputStream out = new FileOutputStream(df.target);
+                        try {
+                            byte[] buf = new byte[65536];
+                            int n;
+                            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                            out.flush();
+                        } finally {
+                            try { in.close(); } catch (IOException ignored) {}
+                            try { out.close(); } catch (IOException ignored) {}
+                        }
+                        df.tmp.delete();
+                    } catch (IOException e) {
+                        df.tmp.delete();
+                    }
+                }
+            }
+        }
+
+        @JavascriptInterface
+        public void abortSaveFile(String fileId) {
+            if (fileId == null) return;
+            synchronized (directFiles) {
+                DirectFile df = directFiles.remove(fileId);
+                if (df != null) {
+                    synchronized (df) {
+                        if (df.out != null) { try { df.out.close(); } catch (IOException ignored) {} df.out = null; }
+                        if (df.tmp != null) df.tmp.delete();
+                    }
+                }
+            }
         }
 
         @JavascriptInterface

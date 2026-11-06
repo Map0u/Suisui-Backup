@@ -244,6 +244,7 @@
     lastZipBlobUrl: '',
     lastZipFilename: '',
     lastZipBlob: null,
+    exportVolumes: null,
     nativeShell: false,
     nativeImportPct: 0,
     nativeImportMsg: ''
@@ -260,6 +261,23 @@
       try { URL.revokeObjectURL(S.lastZipBlobUrl); } catch (e) {}
       S.lastZipBlobUrl = '';
       S.lastZipBlob = null;
+    }
+    var exp = S.exportSession;
+    if (exp) {
+      /* 释放挂着的待保存卷 + 让 closeVolume 的等待返回 false 中断导出 */
+      if (exp.pendingVol && exp.pendingVol.url) {
+        try { URL.revokeObjectURL(exp.pendingVol.url); } catch (e) {}
+      }
+      if (typeof exp.saveResolve === 'function') {
+        try { exp.saveResolve(false); } catch (e) {}
+      }
+      S.exportSession = null;
+    }
+    if (S.exportVolumes) {
+      S.exportVolumes.forEach(function (v) {
+        try { if (v.url) URL.revokeObjectURL(v.url); } catch (e) {}
+      });
+      S.exportVolumes = null;
     }
   }
 
@@ -547,7 +565,12 @@
           store.put(key, 'active_account_key_v1');
         };
         tx.oncomplete = resolve; tx.onerror = function () { reject(tx.error); }; tx.onabort = function () { reject(tx.error); };
-      }); }).then(function () { return mirrorLegacy(key, record, entry, false); });
+      }); }).then(function () {
+        /* 超大账号（>1000 条树洞）不再向旧版 suisui_rescue_db 双写几十 MB 归档，
+         * 省掉一半的磁盘 I/O 与序列化内存；小账号保留镜像兼容旧版读取。 */
+        if (c.tree > 1000) return;
+        return mirrorLegacy(key, record, entry, false);
+      });
     },
     remove: function (key) {
       return this.open().then(function (db) { return new Promise(function (resolve, reject) {
@@ -558,6 +581,30 @@
         active.onsuccess = function () { if (active.result === key) store.delete('active_account_key_v1'); };
         tx.oncomplete = resolve; tx.onerror = function () { reject(tx.error); }; tx.onabort = function () { reject(tx.error); };
       }); }).then(function () { return mirrorLegacy(key, null, null, true); });
+    },
+    /* 安卓壳：把当前归档的 archive.json 直接写进激活账号目录，
+     * 免去反复解压几百 MB 大 ZIP 来同步账号元数据。 */
+    saveNativeJson: function (archive) {
+      if (!isNativeShell() || !archive || typeof window.SuisuiNative.saveArchiveJsonDirect !== 'function') return;
+      try { window.SuisuiNative.saveArchiveJsonDirect(JSON.stringify(archive)); } catch (e) {}
+    },
+    /* ---- v1.3.0 分卷导出断点：key 'export_state_v1' ---- */
+    putExportState: function (state) {
+      return this.open().then(function (db) { return new Promise(function (resolve, reject) {
+        var tx = db.transaction('accounts', 'readwrite'), store = tx.objectStore('accounts');
+        store.put(state, 'export_state_v1');
+        tx.oncomplete = resolve; tx.onerror = function () { reject(tx.error); }; tx.onabort = function () { reject(tx.error); };
+      }); });
+    },
+    readExportState: function () {
+      return this.read('export_state_v1');
+    },
+    clearExportState: function () {
+      return this.open().then(function (db) { return new Promise(function (resolve, reject) {
+        var tx = db.transaction('accounts', 'readwrite'), store = tx.objectStore('accounts');
+        store.delete('export_state_v1');
+        tx.oncomplete = resolve; tx.onerror = function () { reject(tx.error); }; tx.onabort = function () { reject(tx.error); };
+      }); });
     }
   };
 
@@ -642,7 +689,7 @@
             '<div><strong>下载安卓纪念馆 App（仅支持安卓）</strong><span>导入一次备份包，就能在手机上离线翻看</span></div>' +
           '</a>' +
         '</div>' +
-        '<input id="zip-input" class="hidden" type="file" accept=".zip,.json">' +
+        '<input id="zip-input" class="hidden" type="file" accept=".zip,.json" multiple>' +
       '</section>' +
       '<footer class="login-footer" id="landing-footer">愿每一段温柔的岁岁时光，都能被妥善珍藏</footer>' +
     '</div>';
@@ -847,7 +894,12 @@
       };
     }
     var zipInput = $('#zip-input');
-    if (zipInput) zipInput.onchange = function (e) { openArchiveFile(e.target.files && e.target.files[0]); };
+    if (zipInput) zipInput.onchange = function (e) {
+      var files = e.target.files;
+      if (files && files.length > 1) openArchiveFiles(Array.prototype.slice.call(files));
+      else openArchiveFile(files && files[0]);
+      zipInput.value = '';
+    };
     var nativeBtn = $('#native-import');
     if (nativeBtn) nativeBtn.onclick = startNativeImport;
     var demoBtn = $('#open-demo');
@@ -869,9 +921,18 @@
 
   function openArchiveFile(file) {
     if (!file) return;
+    openArchiveFiles([file]);
+  }
+
+  /* v1.3.0：多卷一起选 → SuisuiZipReader 合并索引，索引卷里的 archive.json 驱动打开。
+   * 单 json / 单 zip 与旧逻辑兼容。 */
+  function openArchiveFiles(files) {
+    files = array(files).filter(Boolean);
+    if (!files.length) return;
     revokeMediaCache();
-    if (/\.json$/i.test(file.name)) {
-      file.text().then(function (txt) {
+    var first = files[0];
+    if (files.length === 1 && /\.json$/i.test(first.name)) {
+      first.text().then(function (txt) {
         S.archive = archiveShape(JSON.parse(txt));
         S.zipReader = null;
         S.pull = null;
@@ -882,7 +943,7 @@
       return;
     }
     try {
-      var reader = new SuisuiZipReader(file);
+      var reader = new SuisuiZipReader(files);
       reader.load().then(function () {
         return reader.readJSON('data/archive.json');
       }).then(function (data) {
@@ -892,9 +953,14 @@
         S.pull = null;
         S.isLocalArchive = true;
         S.activeTab = 'tree';
-        IDB.put({ archive: S.archive, modules: {}, complete: true, source: 'import', file: file, uid: S.archive.profile.uid, phone: '' }).catch(function () {});
+        IDB.put({ archive: S.archive, modules: {}, complete: true, source: 'import', file: files[0], uid: S.archive.profile.uid, phone: '' }).catch(function () {});
         enterSuisuiApp();
-        toast('岁岁备份包已打开');
+        var vols = reader.volumes || [];
+        var total = vols.map(function (v) { return String(v.vol).split('/')[1]; }).filter(Boolean)[0];
+        var got = vols.length;
+        toast(files.length > 1
+          ? ('岁岁备份包已打开（合并 ' + files.length + ' 个分卷' + (total ? '，共 ' + total + ' 卷' : '') + '）')
+          : '岁岁备份包已打开');
       }).catch(function () { toast('文件内容格式不正确，请选择岁岁备份包'); });
     } catch (e) {
       toast('这份备份包暂时打不开，请再试一次');
@@ -938,13 +1004,28 @@
     return cp;
   }
 
-  function dedupItems(list) {
-    var seen = {}, out = [];
-    array(list).forEach(function (x) {
-      var k = String((x && x._source) || '') + ':' + String((x && x.id) || '') + ':' + String((x && x.time) || '') + ':' + String((x && x.text) || '').slice(0, 24);
-      if (!seen[k]) { seen[k] = true; out.push(x); }
+  function dedupItems(existing, added) {
+    /* 增量去重：只在新增页上判重一次（已存在的 15,000+ 条不再重建 seen 表）。
+     * 兼容旧调用形态 dedupItems(list)：传入单数组时等同全量去重。 */
+    if (added === undefined) {
+      var seen0 = {}, out0 = [];
+      array(existing).forEach(function (x) {
+        var k = itemKey(x);
+        if (!seen0[k]) { seen0[k] = true; out0.push(x); }
+      });
+      return out0;
+    }
+    var list = array(existing);
+    var seen = {};
+    list.forEach(function (x) { seen[itemKey(x)] = true; });
+    array(added).forEach(function (x) {
+      var k = itemKey(x);
+      if (!seen[k]) { seen[k] = true; list.push(x); }
     });
-    return out;
+    return list;
+  }
+  function itemKey(x) {
+    return String((x && x._source) || '') + ':' + String((x && x.id) || '') + ':' + String((x && x.time) || '') + ':' + String((x && x.text) || '').slice(0, 24);
   }
 
   function moduleItems(key, archive) {
@@ -957,18 +1038,20 @@
   }
 
   function applyPage(cp, module, response) {
+    /* items 已在下方 normalizeItem；cp.archive 保持初次 archiveShape 后的规整形态，
+     * 万级账号每页增量合并时绝不再对整个 cp.archive 重跑 archiveShape（O(N²) 卡死源）。 */
     var items = array(response.items).map(function (item) { return normalizeItem(item, module.key); });
     var prevLen = moduleItems(module.key, cp.archive).length;
     if (module.key === 'profile') {
       cp.archive.profile = profileOf(response.profile || items[0] || cp.archive.profile);
     } else if (module.key === 'letters_in') {
-      cp.archive.post.inbox = dedupItems(cp.archive.post.inbox.concat(items));
+      cp.archive.post.inbox = dedupItems(cp.archive.post.inbox, items);
     } else if (module.key === 'letters_reply') {
-      cp.archive.post.replied = dedupItems(cp.archive.post.replied.concat(items));
+      cp.archive.post.replied = dedupItems(cp.archive.post.replied, items);
     } else if (module.key === 'letters_future') {
-      cp.archive.museum.future = dedupItems(cp.archive.museum.future.concat(items));
+      cp.archive.museum.future = dedupItems(cp.archive.museum.future, items);
     } else {
-      cp.archive[module.key] = dedupItems((cp.archive[module.key] || []).concat(items));
+      cp.archive[module.key] = dedupItems(cp.archive[module.key], items);
     }
     if (module.key === 'friends') cp.archive.friends = cp.archive[module.key];
 
@@ -981,7 +1064,7 @@
     state.done = !response.hasMore || (module.key !== 'profile' && items.length > 0 && added === 0);
 
     cp.count += added;
-    cp.archive = archiveShape(cp.archive);
+    bumpCounts(cp.archive, module.key, added, items);
     cp.complete = PULL_MODULES.every(function (m) { return cp.modules[m.key].done; });
     return added;
   }
@@ -1002,6 +1085,17 @@
     if (!pull || pull.running || pull.paused || pull.stopped) return;
     pull.running = true;
     pull.errorMsg = '';
+    var lastSaveAt = 0;
+    /* 大账号每页 await IDB.put 会把拉取节奏拖死（序列化几十 MB）。
+     * 改为：模块收尾 / 全部完成 / 暂停时必落盘，页间最多每 2.5s 节流落盘。 */
+    async function flushCheckpoint(force) {
+      if (!force && Date.now() - lastSaveAt < 2500) return;
+      lastSaveAt = Date.now();
+      try { await IDB.put(pull.cp); } catch (err) {
+        pull.paused = true; pull.errorMsg = '本地保存失败，请检查设备存储空间'; refreshTopBackupBar();
+        throw err;
+      }
+    }
     (async function () {
       var delays = [1200, 2500, 5000, 8000, 12000];
       while (!pull.paused && !pull.stopped) {
@@ -1035,9 +1129,8 @@
         pull.retryCount = 0;
         var added = applyPage(pull.cp, mod, res);
         S.archive = pull.cp.archive;
-        try { await IDB.put(pull.cp); } catch (err) {
-          pull.paused = true; pull.errorMsg = '本地保存失败，请检查设备存储空间'; refreshTopBackupBar(); break;
-        }
+        var stateAfter = pull.cp.modules[mod.key];
+        try { await flushCheckpoint(stateAfter.done || pull.cp.complete || pull.paused); } catch (err) { break; }
         if (pull.stopped) break;
         refreshTopBackupBar(true);
         if (mod.key === 'tree' && added && S.activeTab === 'tree') {
@@ -1049,8 +1142,12 @@
       pull.running = false;
       pull.active = '';
       if (pull.stopped) return;
+      try { await IDB.put(pull.cp); } catch (e) {}
       refreshTopBackupBar();
-      if (pull.cp.complete && !hasPlayingAudio()) renderCurrentStage();
+      if (pull.cp.complete) {
+        IDB.saveNativeJson(pull.cp.archive);
+        if (!hasPlayingAudio()) renderCurrentStage();
+      }
     }());
   }
 
@@ -1067,16 +1164,13 @@
     btn.onclick = function () { pull.pendingTree = 0; renderCurrentStage(); };
   }
 
-  function counts(d) {
-    var tree = array(d.tree), media = 0, audio = 0, comments = 0;
-    var allRecords = tree.concat(
-      array(d.moods),
-      array(d.diaries),
-      array(d.post && d.post.inbox),
-      array(d.post && d.post.replied),
-      array(d.museum && d.museum.future)
-    );
-    allRecords.forEach(function (x) {
+  /* O(1) 计数缓存：拉取时每页只对新条目做增量 bump，
+   * refreshTopBackupBar / IDB.put 不再对几万条记录全量遍历两遍。 */
+  var COUNTS_CACHE_KEY = '__suisui_counts';
+
+  function countItems(items) {
+    var media = 0, audio = 0, comments = 0;
+    array(items).forEach(function (x) {
       media += array(x.images).length;
       if (x.audio) audio += 1;
       array(x.comments).forEach(function (c) {
@@ -1084,16 +1178,53 @@
         if (c.image) media += 1;
       });
     });
-    return {
+    return { media: media, audio: audio, comments: comments };
+  }
+
+  function moduleListOf(key, d) {
+    if (key === 'letters_in') return array(d.post && d.post.inbox);
+    if (key === 'letters_reply') return array(d.post && d.post.replied);
+    if (key === 'letters_future') return array(d.museum && d.museum.future);
+    return array(d[key]);
+  }
+
+  /* 初次（或形态重建后）计算一次全量计数并挂到归档对象上。 */
+  function initCounts(d) {
+    var c = {
       mood: array(d.moods).length,
       diary: array(d.diaries).length,
-      tree: tree.length,
-      media: media,
-      audio: audio,
-      comments: comments,
+      tree: array(d.tree).length,
+      media: 0, audio: 0, comments: 0,
       letters: array(d.post && d.post.inbox).length + array(d.post && d.post.replied).length + array(d.museum && d.museum.future).length,
       friends: array(d.friends).length
     };
+    var all = array(d.tree).concat(array(d.moods), array(d.diaries),
+      array(d.post && d.post.inbox), array(d.post && d.post.replied), array(d.museum && d.museum.future));
+    var t = countItems(all);
+    c.media = t.media; c.audio = t.audio; c.comments = t.comments;
+    try { Object.defineProperty(d, COUNTS_CACHE_KEY, { value: c, writable: true, enumerable: false, configurable: true }); }
+    catch (e) { d[COUNTS_CACHE_KEY] = c; }
+    return c;
+  }
+
+  /* applyPage 增量更新缓存，避免每页 O(N) 全量重扫。 */
+  function bumpCounts(d, key, added, newItems) {
+    var c = d && d[COUNTS_CACHE_KEY];
+    if (!c) return; // 缓存未建时由 counts() 惰性全量建一次
+    if (key === 'moods') c.mood += added;
+    else if (key === 'diaries') c.diary += added;
+    else if (key === 'tree') c.tree += added;
+    else if (key === 'friends') c.friends += added;
+    else if (key === 'letters_in' || key === 'letters_reply' || key === 'letters_future') c.letters += added;
+    var t = countItems(newItems);
+    c.media += t.media; c.audio += t.audio; c.comments += t.comments;
+  }
+
+  function counts(d) {
+    if (!d) return { mood: 0, diary: 0, tree: 0, media: 0, audio: 0, comments: 0, letters: 0, friends: 0 };
+    var c = d[COUNTS_CACHE_KEY];
+    if (c) return c;
+    return initCounts(d);
   }
 
   /* ==================== 3. 原版岁岁 App 主框架 ==================== */
@@ -1205,6 +1336,7 @@
         '<span>回忆备份包已就绪' + (sizeMB ? ' (' + sizeMB + ')' : '') + '，可保存到手机/电脑（建议顺手存一份到微信文件传输助手防丢）：</span>' +
         '<div class="ready-save-actions">' +
           '<a class="btn btn-teal" href="' + esc(S.lastZipBlobUrl) + '" download="' + esc(S.lastZipFilename || '岁岁备份.zip') + '">保存到手机/电脑</a>' +
+          (S.nativeShell && S.lastZipBlob ? '<button class="btn btn-teal" id="btn-native-save-zip" type="button">拷到手机存储</button>' : '') +
           (navigator.canShare ? '<button class="btn btn-soft" id="btn-ios-share" type="button">存储到文件</button>' : '') +
           (S.nativeShell ? '' : apkLinkHTML()) +
         '</div>' +
@@ -1218,6 +1350,11 @@
       } else {
         rightBtnsHTML += '<button class="btn btn-soft" id="btn-pause-pull" type="button">暂停</button>';
       }
+    }
+    /* 超大账号（>300 媒体）在顶栏放显眼的文字保底按钮，1 秒先存全部文字 */
+    var mediaEstimate = collectMediaRefs(d).length;
+    if (mediaEstimate > 300 && !S.exporting) {
+      rightBtnsHTML += '<button class="btn btn-teal" id="btn-quick-txt" type="button" title="媒体较多时先把全部文字与评论存下来">先存文字手账 (.txt)</button>';
     }
     rightBtnsHTML += '<button class="btn btn-soft" id="btn-switch-account" type="button">切换账号</button>';
     rightBtnsHTML += '<button class="btn btn-primary btn-export-primary" id="btn-export-all" type="button"' + (S.exporting || syncing ? ' disabled' : '') + '>' +
@@ -1258,6 +1395,8 @@
     if (resumeBtn) resumeBtn.onclick = function () { if (S.pull) { S.pull.paused = false; refreshTopBackupBar(); runPull(); } };
     var txtBtn = $('#btn-export-txt-only', topbar);
     if (txtBtn) txtBtn.onclick = exportTextOnly;
+    var quickTxt = $('#btn-quick-txt', topbar);
+    if (quickTxt) quickTxt.onclick = exportTextOnly;
     var privBtn = $('#btn-open-privacy', topbar);
     if (privBtn) privBtn.onclick = openNoticeModal;
     var switchBtn = $('#btn-switch-account', topbar);
@@ -1273,6 +1412,10 @@
       renderLanding();
     };
     bindApkLinks(topbar);
+    var nativeSaveBtn = $('#btn-native-save-zip', topbar);
+    if (nativeSaveBtn && S.lastZipBlob) {
+      nativeSaveBtn.onclick = function () { sendZipToNative(S.lastZipBlob, S.lastZipFilename || '岁岁备份.zip'); };
+    }
     var shareBtn = $('#btn-ios-share', topbar);
     if (shareBtn && S.lastZipBlob) {
       shareBtn.onclick = function () {
@@ -1583,7 +1726,8 @@
     if (!activeList.length) {
       grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><img src="' + A + 'sorrow/letter_empty.png" alt=""><div>该信箱暂无信件记录</div></div>';
     } else {
-      activeList.forEach(function (letter) {
+      /* 万级信件账号分页渲染，切 Tab 不再一次性挂上千个信封 DOM */
+      appendPaged(grid, activeList.slice(), function (letter) {
         var card = el('article', 'letter-envelope-card');
         var greeting = callLine(letter);
         var openDay = letter.majorDay || (letter._module === 'letters_future' ? dayText(letter.arrive) : '');
@@ -1604,8 +1748,8 @@
           '<small>' + esc(letter.time || '') + (letter.nickname ? ' · ' + esc(letter.nickname) : '') + '</small>';
         card.onclick = function () { openLetterModal(letter); };
         bindLightbox(card);
-        grid.appendChild(card);
-      });
+        return card;
+      }, '信件');
     }
     stage.appendChild(grid);
     stage.appendChild(el('img', 'sorrow-page-wave')).src = A + 'ic_sorrow_hu_bottom.png';
@@ -1703,7 +1847,7 @@
       if (!moods.length) {
         listWrap.innerHTML = '<div class="empty-state"><img src="' + A + 'mood/mood_home_empty.png" alt=""><div>暂无心情打卡记录</div></div>';
       } else {
-        moods.forEach(function (m) {
+        appendPaged(listWrap, moods.slice(), function (m) {
           var row = el('article', 'mood-record-card');
           row.innerHTML =
             '<img src="' + moodIconPath(m) + '" alt="">' +
@@ -1713,15 +1857,15 @@
               (m.causeDesc ? '<p>' + esc(m.causeDesc) + '</p>' : '') +
               (m.text && m.text !== m.causeDesc ? '<p>' + esc(m.text) + '</p>' : '') +
             '</div>';
-          listWrap.appendChild(row);
-        });
+          return row;
+        }, '心情打卡');
       }
     } else {
       if (!diaries.length) {
         listWrap.innerHTML = '<div class="empty-state"><img src="' + A + 'misc/ic_diary_home_first.png" alt=""><div>还没有写过碎碎念日记</div></div>' +
           '<img class="diary-bottom-art" src="' + A + 'misc/ic_diary_home_first_bottom.png" alt="">';
       } else {
-        diaries.forEach(function (item) {
+        appendPaged(listWrap, diaries.slice(), function (item) {
           var row = el('article', 'mood-record-card');
           row.innerHTML =
             '<img src="' + A + 'mine/ic_mine_daily.png" alt="">' +
@@ -1732,8 +1876,8 @@
               mediaGridHTML(item.images) +
             '</div>';
           bindLightbox(row);
-          listWrap.appendChild(row);
-        });
+          return row;
+        }, '碎碎念日记');
         var diaryArt = el('img', 'diary-bottom-art');
         diaryArt.src = A + 'misc/ic_diary_home_first_bottom.png';
         diaryArt.alt = '';
@@ -1967,11 +2111,11 @@
     if (!activeGroup.length) {
       peopleCard.insertAdjacentHTML('beforeend', '<div class="empty-state" style="padding:20px"><img src="' + A + 'empty/empty_search.png" alt=""><div>暂无相关岁友记录</div></div>');
     } else {
-      activeGroup.forEach(function (person) {
+      appendPaged(peopleCard, activeGroup.slice(), function (person) {
         var row = el('div', 'person-item-row');
         row.innerHTML = personRowHTML(person);
-        peopleCard.appendChild(row);
-      });
+        return row;
+      }, '岁友');
     }
     stage.appendChild(peopleCard);
 
@@ -2258,17 +2402,166 @@
       'var tabs=[["tree","树洞 ("+(d.tree||[]).length+")"],["mood","心情与日记 ("+((d.moods||[]).length+(d.diaries||[]).length)+")"],["letter","解忧邮局"],["fm","心愿与FM ("+(d.fm||[]).length+")"],["friends","关注/粉丝/访客 ("+(d.friends||[]).length+")"],["mine","我的资料"]];',
       'a.innerHTML="<div class=hero>"+imgTag(p.avatar,"ava")+"<div><h1>"+esc(p.nickname||"岁友")+" 的岁岁纪念馆</h1><div>"+esc(p.signature||"")+"</div><div class=meta>本地离线珍藏版 · 解压至同目录即可查看配图与播放语音</div></div></div><nav id=nav></nav><section id=items></section>";',
       'var nav=document.getElementById("nav");',
+      'var PAGE_SIZE=40;',
       'function show(k){',
       '  nav.innerHTML=tabs.map(function(t){return "<button class=\\\""+(t[0]===k?"active":"")+"\\\" data-k=\\\""+t[0]+"\\\">"+t[1]+"</button>";}).join("");',
       '  Array.prototype.forEach.call(nav.querySelectorAll("button"),function(b){b.onclick=function(){show(b.getAttribute("data-k"));};});',
-      '  if(k==="mine"){document.getElementById("items").innerHTML=mine();return;}',
+      '  var items=document.getElementById("items");',
+      '  if(k==="mine"){items.innerHTML=mine();return;}',
       '  var xs=k==="tree"?(d.tree||[]):k==="mood"?[].concat(d.moods||[],d.diaries||[]):k==="letter"?[].concat((d.post||{}).inbox||[],(d.post||{}).sent||[],(d.post||{}).replied||[],(d.museum||{}).future||[]):k==="fm"?(d.fm||[]):(d.friends||[]);',
-      '  document.getElementById("items").innerHTML=xs.length?xs.map(card).join(""):"<div class=card>该分类下暂无记录</div>";',
+      '  if(!xs.length){items.innerHTML="<div class=card>该分类下暂无记录</div>";return;}',
+      '  var cursor=0;',
+      '  items.innerHTML="";',
+      '  var more=document.createElement("button");more.id="more-btn";more.style.cssText="display:block;margin:16px auto;padding:10px 24px;";',
+      '  function renderBatch(){',
+      '    var end=Math.min(cursor+PAGE_SIZE,xs.length),frag="";',
+      '    while(cursor<end)frag+=card(xs[cursor++]);',
+      '    var tmp=document.createElement("div");tmp.innerHTML=frag;',
+      '    while(tmp.firstChild)items.insertBefore(tmp.firstChild,more);',
+      '    var left=xs.length-cursor;',
+      '    if(left>0){more.textContent="加载更多记录 (剩余 "+left+" 条)";}else{more.remove();}',
+      '  }',
+      '  items.appendChild(more);',
+      '  more.onclick=renderBatch;',
+      '  renderBatch();',
       '}',
       'show("tree");',
       '})();<\/script></body></html>'
     ];
     return tpl.join('\n');
+  }
+
+  /* ===== v1.3.0 分卷导出：自描述媒体卷 + 最后「索引卷」 =====
+   * 协议：每个卷都是独立合法 zip，卷内 manifest.json 声明
+   *   { version:3, exportId, accountKey, vol:"i/N"(媒体卷 N=0), files:[{name,size,crc}] }
+   * archive.json / 打开岁岁纪念馆.html / 手账 txt / 媒体清单全部放最后的索引卷，
+   * 索引卷 manifest 带 vol:"N/N"、totalMedia、failedMediaCount、missingMedia。
+   * 合并方式：多卷一起喂给 SuisuiZipReader（同名后卷覆盖）或安卓按 exportId 追加 media/。 */
+  var MAX_VOL_BYTES = 120 * 1024 * 1024; // 120 MB / 卷
+  var MAX_VOL_FILES = 1200;              // 1200 个媒体 / 卷
+
+  function guessExt(url) {
+    var s = String(url || '');
+    try {
+      var u = new URL(s, location.origin);
+      var cand = u.searchParams.get('path') || u.pathname;
+      var m = cand.split('?')[0].match(/\.(png|jpe?g|webp|gif|wav|mp3|m4a|mp4|mov)$/i);
+      if (m) return m[1].toLowerCase().replace('jpeg', 'jpg');
+    } catch (e) {}
+    var m2 = s.split('?')[0].match(/\.(png|jpe?g|webp|gif|wav|mp3|m4a|mp4|mov)$/i);
+    if (m2) return m2[1].toLowerCase().replace('jpeg', 'jpg');
+    return 'jpg'; // 默认图片
+  }
+
+  function volumeFilename(base, idx, total) {
+    if (total <= 1) return base + '.zip';
+    return base + '_第' + idx + '卷（共' + total + '卷）.zip';
+  }
+
+  /* 安卓壳直写 media/：fetch 下来的字节直接落 files/archives/<key>/media，
+   * App 内立即可看，不需要用户管 zip。返回 true 表示壳已接收。 */
+  var NATIVE_FILE_CHUNK = 768 * 1024; // base64 分块，防单次桥调用参数过长
+  var nativeFileSeq = 0;
+
+  function nativeSaveFile(relPath, bytes) {
+    if (!isNativeShell() || typeof window.SuisuiNative.beginSaveFile !== 'function') return Promise.resolve(false);
+    var fid = 'f' + Date.now().toString(36) + '_' + (++nativeFileSeq);
+    try {
+      window.SuisuiNative.beginSaveFile(fid, relPath, bytes.byteLength);
+      for (var off = 0; off < bytes.byteLength; off += NATIVE_FILE_CHUNK) {
+        var part = bytes.subarray(off, Math.min(off + NATIVE_FILE_CHUNK, bytes.byteLength));
+        window.SuisuiNative.appendSaveFileChunk(fid, uint8ArrayToBase64(part));
+      }
+      window.SuisuiNative.finishSaveFile(fid);
+      return Promise.resolve(true);
+    } catch (e) {
+      try { window.SuisuiNative.abortSaveFile && window.SuisuiNative.abortSaveFile(fid); } catch (e2) {}
+      return Promise.resolve(false);
+    }
+  }
+
+  /* 导出断点：IndexedDB 记 {exportId, accountKey, refs, doneVols, completed}，
+   * 页面被回收/中断后可从下一卷继续做；写失败时降级为仅内存继续。 */
+  function persistExportState() {
+    var exp = S.exportSession;
+    if (!exp || !exp.state || exp.degraded) return Promise.resolve();
+    return IDB.putExportState(exp.state).catch(function () {
+      exp.degraded = true; // IDB 写不动不卡死导出，仅提示尽快存
+      S.exportProgressSub = (S.exportProgressSub || '') + ' · 本地断点暂不可写，请尽快导出完';
+      updateExportProgressDOM();
+    });
+  }
+
+  function clearExportState() {
+    var exp = S.exportSession;
+    if (!exp || exp.degraded) return Promise.resolve();
+    return IDB.clearExportState().catch(function () {});
+  }
+
+  /* 顶栏分卷面板：当前待保存卷只驻留 1 个 Blob（背压），
+   * 浏览器端点「保存第 i 卷」→ 下载后立刻 revoke + 继续打下一卷；
+   * 安卓壳媒体已直写 media/，面板只留「打包拷电脑」入口。 */
+  function renderVolumesBar() {
+    var topbar = $('#backup-topbar');
+    if (!topbar) return;
+    var old = $('.vol-save-bar', topbar);
+    if (old) old.remove();
+    var exp = S.exportSession;
+    if (!exp) return;
+    var st = exp.state;
+    var bar = el('div', 'vol-save-bar');
+
+    if (exp.phase === 'done' && !exp.pendingVol) {
+      var missing = (st && st.missingMedia) || [];
+      var savedVols = (st && st.volumes) || [];
+      bar.innerHTML = '<div style="font-size:12px;color:var(--muted);margin:6px 0 4px">回忆备份包已生成' +
+        (savedVols.length > 1 ? '（共 ' + savedVols.length + ' 卷，索引卷在最后，多选全部卷一起打开即可合并）' : '') +
+        (exp.directCount ? ' · App 内 ' + exp.directCount + ' 份照片语音已直接装进纪念馆' : '') +
+        (missing.length ? ' · 有 ' + missing.length + ' 份原文件暂不可下' : '') + '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">' +
+          (S.lastZipBlobUrl ? '<a class="btn btn-teal" href="' + esc(S.lastZipBlobUrl) + '" download="' + esc(S.lastZipFilename || '岁岁索引卷.zip') + '">保存索引卷（含纪念册+全部文字）</a>' : '') +
+          (missing.length ? '<button class="btn btn-soft" id="btn-topup-media" type="button">补齐缺失媒体（重试 ' + missing.length + ' 项）</button>' : '') +
+        '</div>' +
+        savedVols.map(function (v) {
+          return '<div class="vol-item" style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(0,0,0,.05)">' +
+            '<span style="font-size:12px">第 ' + v.vol + ' 卷' + (v.indexVol ? '（索引卷·纪念册+文字）' : '（媒体包）') + ' · ' + (v.size / 1048576).toFixed(0) + 'MB · ' + v.count + ' 项' + (v.saved ? ' · 已保存' : '') + '</span>' +
+          '</div>';
+        }).join('');
+      topbar.appendChild(bar);
+      var topup = $('#btn-topup-media', bar);
+      if (topup) topup.onclick = function () { exportMissingMedia(st, missing); };
+      return;
+    }
+
+    /* 进行中：待保存卷（浏览器）或直写进度（安卓壳） */
+    var pending = exp.pendingVol;
+    var savedCount = ((st && st.volumes) || []).length;
+    var html = '<div style="font-size:12px;color:var(--muted);margin:6px 0 4px">' +
+      (exp.nativeDirect
+        ? '照片语音正在直接装进纪念馆（免解压）' + (savedCount ? ' · 已同步打包 ' + savedCount + ' 卷' : '')
+        : '回忆太大已自动分卷（同一时刻只保留 1 卷待保存）') + '</div>';
+    if (pending && pending.blob) {
+      html += '<div class="vol-item" style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(0,0,0,.05)">' +
+        '<span style="font-size:13px">第 ' + pending.vol + ' 卷' + (pending.indexVol ? '（索引卷·含纪念册与文字）' : '（媒体包）') + ' · ' + (pending.blob.size / 1048576).toFixed(0) + 'MB · ' + pending.count + ' 项</span>' +
+        '<button class="btn btn-teal" type="button" id="btn-save-vol">保存第 ' + pending.vol + ' 卷</button>' +
+      '</div>';
+    } else if (pending) {
+      html += '<div style="font-size:13px;padding:6px 0">第 ' + pending.vol + ' 卷已写入 App 归档' + (pending.count ? '（' + pending.count + ' 项）' : '') + '</div>';
+    }
+    if (savedCount) {
+      html += '<div style="font-size:12px;color:var(--muted);padding-top:4px">已存妥 ' + savedCount + ' 卷' +
+        (exp.nativeDirect ? '（已拷到 App 本地）' : '（导出会继续，直到打完最后的索引卷）') + '</div>';
+    }
+    bar.innerHTML = html;
+    topbar.appendChild(bar);
+    var saveBtn = $('#btn-save-vol', bar);
+    if (saveBtn && pending && pending.blob) {
+      saveBtn.onclick = function () {
+        saveBtn.textContent = '已保存，继续下一卷…';
+        saveBtn.disabled = true;
+        if (typeof exp.requestSave === 'function') exp.requestSave();
+      };
+    }
   }
 
   async function exportFullZip() {
@@ -2278,42 +2571,183 @@
     }
     if (S.exporting) return;
     S.exporting = true;
-    S.exportPct = 5;
+    S.exportPct = 3;
     S.exportProgressTitle = '正在整理文字、照片与语音…';
     S.exportProgressSub = '请稍候，马上就好';
     refreshTopBackupBar();
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {}); } catch (e) {}
 
     try {
       var archive = archiveForExport();
-      var writer = new SuisuiZipWriter();
+      var accountKey = accountKeyOf(archive);
+      var baseName = '岁岁时光备份_' + (archive.profile.nickname || '岁友') + '_' + new Date().toISOString().slice(0, 10);
+      var directOk = isNativeShell() && typeof window.SuisuiNative.beginSaveFile === 'function';
+
+      /* 恢复中断的导出：同一账号 + 同一批媒体 → 从断点接着做 */
       var refs = collectMediaRefs(archive);
       var urlMap = {};
-      var failedUrls = [];
-      var completed = 0, totalDownloadedBytes = 0, samples = [], nextRef = 0;
-      var queue = refs.slice();
+      refs.forEach(function (ref) {
+        var kind = String(ref.kind || 'media').replace(/[^a-z0-9_-]/gi, 'media');
+        urlMap[ref.url] = 'media/' + kind + '_' + ref.index + '.' + guessExt(ref.url);
+      });
+      var resume = null;
+      try {
+        var prev = await IDB.readExportState();
+        if (prev && prev.accountKey === accountKey && !prev.complete && prev.refsTotal === refs.length) {
+          resume = prev;
+        }
+      } catch (e) {}
+
+      var exportId = (resume && resume.exportId) || ('e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+      var state = resume || {
+        exportId: exportId,
+        accountKey: accountKey,
+        createdAt: Date.now(),
+        refsTotal: refs.length,
+        completed: [],          // 已下载媒体计数（不是 ref.index 数组，防万级长度）
+        completedIdx: {},       // ref.index -> true
+        failedUrls: [],
+        missingMedia: [],
+        volumes: [],            // [{vol, size, count, indexVol, saved}]
+        directCount: 0,
+        complete: false
+      };
+      state.completedIdx = state.completedIdx || {};
+      state.failedUrls = state.failedUrls || [];
+      state.missingMedia = state.missingMedia || [];
+      state.volumes = state.volumes || [];
+      state.completed = Number(state.completed) || 0;
+
+      var exp = S.exportSession = {
+        state: state,
+        pendingVol: null,
+        nativeDirect: directOk,
+        directCount: state.directCount || 0,
+        saveRequested: false,
+        saveResolve: null,
+        degraded: false,
+        phase: 'media'
+      };
+      if (resume) toast('检测到上次导出到第 ' + (state.volumes.length + 1) + ' 卷中断，已从断点继续');
+
+      /* ---- 卷封口 ---- */
+      var writer = new SuisuiZipWriter();
+      var volIndex = state.volumes.length;
+      var volFiles = 0;
+
+      /* manifest 在封口时写：entries 已能预知 name/size/crc（add 时算出） */
+      async function closeVolume(isIndex, manifestExtra) {
+        volIndex += 1;
+        S.exportProgressTitle = isIndex ? '正在封存索引卷（纪念册与文字）…' : ('正在封存第 ' + volIndex + ' 卷…');
+        updateExportProgressDOM();
+        var files = writer.entries.map(function (e) { return { name: e.name, size: e.size || 0, crc: e.crc || 0 }; });
+        var manifest = {
+          version: 3, exportId: exportId, accountKey: accountKey,
+          vol: volIndex, indexVol: !!isIndex, files: files
+        };
+        if (manifestExtra) Object.keys(manifestExtra).forEach(function (k) { manifest[k] = manifestExtra[k]; });
+        writer.add('manifest.json', JSON.stringify(manifest, null, 2));
+        var count = writer.entries.length - 1;
+        var blob = await writer.finalize();
+        var info = { vol: volIndex, size: blob.size, count: count, indexVol: !!isIndex, saved: false };
+        state.volumes.push(info);
+        volFiles = 0;
+        writer = new SuisuiZipWriter();
+
+        var filename = volumeFilename(baseName, volIndex, 0);
+        if (exp.nativeDirect) {
+          /* 安卓：媒体已直写归档，媒体卷 Blob 没必要再过桥落盘，
+           * 只有索引卷值得直接进 App 归档（含纪念册/文字/json）供离线查看。
+           * sendZipToNative 会走 ACTION_CREATE_DOCUMENT 弹窗 → 只让它给「拷电脑」按需用。 */
+          info.saved = true;
+          if (isIndex) {
+            S.lastZipBlob = blob;
+            S.lastZipFilename = filename;
+            S.lastZipBlobUrl = URL.createObjectURL(blob);
+          }
+        } else {
+          var url = URL.createObjectURL(blob);
+          var pending = { vol: volIndex, blob: blob, url: url, filename: filename, count: count, indexVol: !!isIndex, info: info };
+          exp.pendingVol = pending;
+          renderVolumesBar();
+          /* 第 1 卷直接自动下载一次（这次点击在 export 手势链内，多数浏览器放行），
+           * 其余卷等用户点保存，天然背压：同刻只 1 个待保存 Blob。 */
+          if (volIndex === 1) {
+            triggerDownload(url, filename);
+            info.saved = true;
+            exp.pendingVol = null;
+            try { URL.revokeObjectURL(url); } catch (e) {}
+          } else {
+            exp.saveRequested = false;
+            var ok = await new Promise(function (resolve) { exp.saveResolve = resolve; });
+            exp.saveResolve = null;
+            exp.pendingVol = null;
+            try { URL.revokeObjectURL(url); } catch (e) {}
+            pending.blob = null;
+            info.saved = !!ok;
+            if (!ok) throw new Error('保存中断');
+          }
+        }
+        await persistExportState();
+        return info;
+      }
+
+      /* 顶栏点「保存第 i 卷」→ 真正下载 + 放行封口 */
+      function requestSavePending() {
+        var p = exp && exp.pendingVol;
+        if (!p || !p.url) return;
+        triggerDownload(p.url, p.filename);
+        if (exp.saveResolve) exp.saveResolve(true);
+      }
+      exp.requestSave = requestSavePending;
+
+      /* ---- 阶段 1：媒体下载 → 安卓直写 media/；浏览器 → 打媒体卷 ---- */
+      var failedUrls = state.failedUrls;
+      var doneIdx = state.completedIdx;
+      var completed = Number(state.completed) || 0;
+      var totalDownloadedBytes = 0, samples = [], nextRef = 0;
+      var queue = refs.filter(function (ref) { return !doneIdx[ref.index]; });
+      var sealing = false;
 
       async function mediaWorker() {
-        while (nextRef < queue.length) {
+        while (true) {
+          if (sealing) { await new Promise(function (r) { setTimeout(r, 30); }); continue; }
+          if (nextRef >= queue.length) break;
           var ref = queue[nextRef++];
           var res = await fetchMedia(ref);
           completed += 1;
+          state.completed = completed;
           if (res && res.bytes) {
             totalDownloadedBytes += res.bytes.byteLength;
             samples.push({ at: Date.now(), bytes: res.bytes.byteLength });
             var cutoff = Date.now() - 3000;
             while (samples.length && samples[0].at < cutoff) samples.shift();
-            var path = 'media/' + String(ref.kind).replace(/[^a-z0-9_-]/gi, 'media') + '_' + ref.index + '.' + res.ext;
-            writer.add(path, res.bytes);
-            urlMap[ref.url] = path;
+            var relPath = urlMap[ref.url];
+            if (exp.nativeDirect) {
+              var ok = await nativeSaveFile(relPath, res.bytes);
+              if (ok) exp.directCount += 1;
+              else writer.add(relPath, res.bytes); // 直写失败兜底进 zip 卷
+            } else {
+              writer.add(relPath, res.bytes);
+            }
+            volFiles += 1;
+            doneIdx[ref.index] = true;
           } else {
-            failedUrls.push(ref.url);
+            if (failedUrls.indexOf(ref.url) < 0) failedUrls.push(ref.url);
           }
           var elapsed = Math.max(0.001, (Date.now() - (samples[0] ? samples[0].at : Date.now())) / 1000);
           var speed = samples.reduce(function (sum, item) { return sum + item.bytes; }, 0) / elapsed / 1048576;
-          S.exportPct = 8 + Math.round(completed / Math.max(1, refs.length) * 80);
-          S.exportProgressTitle = '正在收录照片与语音 (' + completed + ' / ' + refs.length + ')';
+          S.exportPct = Math.min(90, 5 + Math.round(completed / Math.max(1, refs.length) * 82));
+          S.exportProgressTitle = '正在收录照片与语音 (' + completed + ' / ' + refs.length + ')' +
+            (exp.nativeDirect ? ' · 直写 App 归档' : '');
           S.exportProgressSub = '已下载 ' + (totalDownloadedBytes / 1048576).toFixed(1) + ' MB · 速度 ' + speed.toFixed(1) + ' MB/s';
           updateExportProgressDOM();
+          if (completed % 400 === 0) await persistExportState();
+          /* 达阈值且还有剩余 → 封媒体卷（浏览器会等保存，天然背压） */
+          if (nextRef < queue.length && writer.entries.length && (volFiles >= MAX_VOL_FILES || writer.totalBytes >= MAX_VOL_BYTES)) {
+            sealing = true;
+            try { await closeVolume(false); } finally { sealing = false; }
+          }
         }
       }
 
@@ -2321,62 +2755,132 @@
       for (var w = 0; w < 6; w++) workers.push(mediaWorker());
       await Promise.all(workers);
 
-      S.exportPct = 92;
-      S.exportProgressTitle = '正在写好离线纪念册，马上就能翻看…';
-      refreshTopBackupBar();
+      /* 剩余不满一卷的媒体收尾（浏览器此时可能仍挂着上一卷等保存，先清掉） */
+      if (writer.entries.length) await closeVolume(false);
 
+      /* ---- 阶段 2：索引卷（最后） ---- */
+      exp.phase = 'index';
       var exportData = rewriteMedia(archive, urlMap, '');
       var failedSet = {};
       failedUrls.forEach(function (u) { failedSet[u] = true; });
+      var missing = failedUrls.map(function (u) { return urlMap[u] || u; });
+      state.missingMedia = missing;
+      state.directCount = exp.directCount;
       var htmlArchive = stripFailedApiMedia(exportData, failedSet, '');
+
+      S.exportPct = 94;
+      S.exportProgressTitle = '正在写最后的索引卷（纪念册与文字）…';
+      updateExportProgressDOM();
+
       writer.add('打开岁岁纪念馆.html', standaloneHTML(htmlArchive));
       writer.add('data/archive.json', JSON.stringify(exportData));
-      writer.add('manifest.json', JSON.stringify({
-        version: 2,
-        accountKey: accountKeyOf(archive),
-        uid: String(archive.profile.uid || S.uid || ''),
-        nickname: archive.profile.nickname || '',
-        generatedAt: new Date().toISOString(),
+      writer.add('岁岁记忆全文合集.txt', formatArchiveText(exportData, false));
+      var totalEntries = array(archive.tree).length + array(archive.moods).length + array(archive.diaries).length +
+        array(archive.post && archive.post.inbox).length + array(archive.post && archive.post.replied).length +
+        array(archive.museum && archive.museum.future).length + array(archive.fm).length + array(archive.friends).length;
+      if (totalEntries <= 3000) {
+        writer.add('岁岁记忆全文合集.md', formatArchiveText(exportData, true));
+      }
+      var manifestLines = [
+        '【媒体对象路径清单】共 ' + refs.length + ' 项 · 已收录 ' + (refs.length - failedUrls.length) + ' 项',
+        refs.map(function (ref) { return urlMap[ref.url] + '\t' + ref.url; }).join('\n')
+      ];
+      if (missing.length) {
+        manifestLines.push('', '【缺失清单】共 ' + missing.length + ' 项（原文件在岁岁端已失效或暂不可下）', missing.join('\n'));
+      }
+      writer.add('media-urls.txt', refs.length ? manifestLines.join('\n') : '（本账号无媒体文件）');
+      writer.add('README-如何查看我的回忆.txt', [
+        '【岁岁 · 时光纪念馆 本地完整备份包】',
+        '1. 本备份为多卷自描述包：每卷都有 manifest.json 写明 exportId 与卷号，索引卷（最后一卷）内含纪念册与全部文字。',
+        '2. 手机查看：打开岁岁备份网页，点「打开本地备份包」，把全部卷多选一起打开即可自动合并；安卓 App 里媒体已直接装进纪念馆，无需解压。',
+        '3. 电脑查看：把全部卷解压到同一个文件夹，双击「打开岁岁纪念馆.html」。',
+        '4. 记事本阅读：直接打开「岁岁记忆全文合集.txt」按时间轴读全部文字与评论。',
+        '5. 完整性核对：media-urls.txt 是媒体对象路径清单（非下载直链，签名 12 分钟会过期）；有缺失项可在 App 内点「补齐缺失媒体」生成补齐卷。'
+      ].join('\n'));
+
+      await closeVolume(true, {
+        totalVols: volIndex + 1,
         totalMedia: refs.length,
         savedMedia: refs.length - failedUrls.length,
         failedMediaCount: failedUrls.length,
+        missingMedia: missing,
         urlMap: urlMap
-      }, null, 2));
-      writer.add('岁岁记忆全文合集.md', formatArchiveText(exportData, true));
-      writer.add('岁岁记忆全文合集.txt', formatArchiveText(exportData, false));
-      writer.add('README-如何查看我的回忆.txt', [
-        '【岁岁 · 时光纪念馆 本地完整备份包】',
-        '1. 电脑查看：将本压缩包完整解压后，双击「打开岁岁纪念馆.html」即可离线查看全部树洞、配图、评论与播放语音。',
-        '2. 手机查看：打开岁岁备份网页，点击首页「打开本地备份包」，直接打开已保存的岁岁备份包。',
-        '3. 记事本阅读：可直接打开「岁岁记忆全文合集.txt」或「.md」按时间轴阅读全部文字与历史评论。'
-      ].join('\n'));
+      });
 
-      var blob = await writer.finalize();
-      if (S.lastZipBlobUrl) {
-        try { URL.revokeObjectURL(S.lastZipBlobUrl); } catch (e) {}
-      }
-      var filename = '岁岁时光备份_' + (archive.profile.nickname || '岁友') + '_' + new Date().toISOString().slice(0, 10) + '.zip';
-      S.lastZipBlob = blob;
-      S.lastZipFilename = filename;
-      S.lastZipBlobUrl = URL.createObjectURL(blob);
+      state.complete = true;
+      state.volumes.forEach(function (v) { v.filename = volumeFilename(baseName, v.vol, volIndex); });
+      exp.phase = 'done';
       S.exporting = false;
       refreshTopBackupBar();
+      renderVolumesBar();
+      IDB.saveNativeJson(archive);
+      await clearExportState();
 
-      triggerDownload(S.lastZipBlobUrl, filename);
-      if (isNativeShell()) {
-        sendZipToNative(blob, filename);
-      }
       var savedCount = refs.length - failedUrls.length;
       toast(isNativeShell()
-        ? ('岁岁回忆备份包已生成并已存入 App 本地，正在唤起系统保存窗口…')
+        ? ('岁岁回忆已装进纪念馆' + (exp.directCount ? '（' + exp.directCount + ' 份照片语音已直接可看）' : '') + (volIndex > 1 ? '，索引卷含完整纪念册可随时拷电脑' : ''))
         : (failedUrls.length
-          ? ('已收录 ' + savedCount + ' 份照片与语音（有 ' + failedUrls.length + ' 份原文件在岁岁端已失效） · 请将 .zip 存到电脑硬盘/网盘，别只留手机里')
-          : ('岁岁回忆备份包已生成（共收录 ' + savedCount + ' 份照片与语音） · 请将 .zip 存到电脑硬盘/网盘，别只留手机里')));
+          ? ('已收录 ' + savedCount + ' 份照片与语音（' + failedUrls.length + ' 份已失效） · 共 ' + volIndex + ' 卷，索引卷在最后，请存到电脑硬盘/网盘')
+          : ('岁岁回忆备份包已生成（共 ' + savedCount + ' 份照片与语音，' + volIndex + ' 卷） · 索引卷在最后，请存到电脑硬盘/网盘')));
     } catch (err) {
       S.exporting = false;
       refreshTopBackupBar();
+      renderVolumesBar();
       toast(friendlyError(err.message || '没有保存成功，请再试一次'));
     }
+  }
+
+  /* 失败补偿：对已记录的 missingMedia 做第二轮补导，打一个补齐卷 */
+  async function exportMissingMedia(state, missingPaths) {
+    if (!state || !missingPaths || !missingPaths.length || S.exporting) return;
+    var refs = collectMediaRefs(archiveForExport());
+    var urlMap = {};
+    refs.forEach(function (ref) {
+      var kind = String(ref.kind || 'media').replace(/[^a-z0-9_-]/gi, 'media');
+      urlMap[ref.url] = 'media/' + kind + '_' + ref.index + '.' + guessExt(ref.url);
+    });
+    var byPath = {};
+    missingPaths.forEach(function (p) { byPath[p] = true; });
+    var targets = refs.filter(function (r) { return byPath[urlMap[r.url]]; });
+    if (!targets.length) { toast('缺失项已无需补齐'); return; }
+    S.exporting = true;
+    S.exportProgressTitle = '正在补齐缺失媒体…';
+    updateExportProgressDOM();
+    var w = new SuisuiZipWriter();
+    var got = 0;
+    for (var i = 0; i < targets.length; i++) {
+      var res = await fetchMedia(targets[i]);
+      if (res && res.bytes) {
+        var rel = urlMap[targets[i].url];
+        if (isNativeShell() && typeof window.SuisuiNative.beginSaveFile === 'function') {
+          if (await nativeSaveFile(rel, res.bytes)) { got++; continue; }
+        }
+        w.add(rel, res.bytes);
+        got++;
+      }
+      S.exportProgressTitle = '正在补齐缺失媒体 (' + (i + 1) + ' / ' + targets.length + ')';
+      updateExportProgressDOM();
+    }
+    var doneBlob = null;
+    if (w.entries.length) {
+      w.add('manifest.json', JSON.stringify({
+        version: 3, exportId: state.exportId, accountKey: state.accountKey,
+        vol: (state.volumes || []).length + 1, topup: true,
+        files: w.entries.map(function (e) { return { name: e.name, size: e.size, crc: e.crc }; })
+      }));
+      doneBlob = await w.finalize();
+    }
+    S.exporting = false;
+    if (doneBlob) {
+      var url = URL.createObjectURL(doneBlob);
+      var fname = '岁岁补齐卷_' + new Date().toISOString().slice(0, 10) + '.zip';
+      triggerDownload(url, fname);
+      if (isNativeShell()) sendZipToNative(doneBlob, fname);
+      setTimeout(function () { try { URL.revokeObjectURL(url); } catch (e) {} }, 60000);
+    }
+    refreshTopBackupBar();
+    renderVolumesBar();
+    toast(got ? ('已补齐 ' + got + ' 份缺失媒体' + (doneBlob ? '，补齐卷已保存' : '，已直接写入 App 归档')) : '缺失项仍无法下载，原文件可能已被岁岁端删除');
   }
 
   window.exportZip = exportFullZip;
